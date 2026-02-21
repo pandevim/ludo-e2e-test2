@@ -116,6 +116,10 @@ Run this on your **local machine** (replace `<node_name>` with the actual node n
 ssh -f -N -L 8080:<node_name>:8000 <username>@jarvis.stevens.edu
 ```
 
+```bash
+ngrok http 8080
+```
+
 ### 7. Test the API Endpoints
 
 Now you can start sending requests to `localhost:8080` from your laptop!
