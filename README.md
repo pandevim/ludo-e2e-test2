@@ -8,21 +8,27 @@ This repository contains the configuration needed to run the 0.5B Quantized Qwen
 
 ## Setup & Execution Flow
 
-Create `.env` and `.env.production` files locally. And put your secrets in them.
+### 0. Local Setup (Optional)
+
+Create `.env` and `.env.production` files locally and put your secrets in them:
 
 ```bash
 HF_TOKEN=<your_hf_token>
 ```
 
+Encrypt the `.env` files locally:
+
 ```bash
-# Encrypt the .env file locally
+# Default
 npx @dotenvx/dotenvx encrypt
 
-# production
+# Production
 npx @dotenvx/dotenvx encrypt -f .env.production
 ```
 
-### 0. Install dotenvx on JARVIS
+### 1. Connect and Clone
+
+Connect to JARVIS and clone the repository:
 
 ```bash
 ssh <username>@jarvis.stevens.edu
@@ -30,14 +36,19 @@ git clone https://github.com/pandevim/ludo-e2e-test2.git
 cd ludo-e2e-test2
 ```
 
-Since we are using encrypted `.env` files for secrets, install the standalone `dotenvx` binary into your home directory:
+### 2. Install dotenvx on JARVIS (HPC)
+
+Since we are using encrypted `.env` files for secrets, install the standalone `dotenvx` binary into your home directory.
+
+First, create the secrets directory and add the decryption key:
 
 ```bash
-# Create the secrets directory and add the decryption key to the secrets directory
 # Note the space before "mkdir" to avoid saving the command in shell history (~/.bash_history),
 # as it contains a sensitive Private Key.
  mkdir -p ~/.secrets && echo 'export DOTENV_PRIVATE_KEY_PRODUCTION="3aa1a24c84e9d299883a55cd557a9ef164dc118c9ebda9ce1486b9daf9081161"' > ~/.secrets/ludo.key
 ```
+
+Then, install `dotenvx`:
 
 ```bash
 # 1. Make sure your local bin directory exists
@@ -47,37 +58,47 @@ mkdir -p ~/.local/bin
 curl -sfS "https://dotenvx.sh?directory=$HOME/.local/bin" | sh
 ```
 
-### 1. Launch the Server on JARVIS (HPC)
+### 3. Launch the Server on JARVIS (HPC)
 
-Connect to your JARVIS login node and run the following commands:
+Before running the server, pull the required image. We force Apptainer to unpack the image on the fast local SSD:
 
 ```bash
-# Watch the Slurm queue for available nodes
-watch --color -d -n 1 'sinfo | grep --color=always -E "idle|mix|$"'
+module load apptainer
+export APPTAINER_CACHEDIR="/local/$USER/apptainer_cache"
+export APPTAINER_TMPDIR="/local/$USER/apptainer_tmp"
+mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
+
+apptainer pull vllm-openai.sif docker://vllm/vllm-openai:latest
 ```
 
+Submit the job to the Slurm scheduler:
+
 ```bash
-# Submit the job to the Slurm scheduler
 # Note: dotenvx is configured in the script to load your encrypted .env.production via the decryption key in ~/.secrets/ludo.key
 sbatch --partition=gpu-h100 run_vllm.slurm
 ```
 
-### 2. Identify the Compute Node
-
-Check the Slurm queue to see which compute node grabbed your job:
+_(Optional)_ Watch the Slurm queue for available nodes:
 
 ```bash
-squeue -u apandey10
+watch --color -d -n 1 'sinfo | grep --color=always -E "idle|mix|$"'
 ```
 
+### 4. Identify the Compute Node
+
+Check the Slurm queue to see which compute node grabbed your job. Look under the `NODELIST` column (e.g., `g101`). Wait until the job state is `R` (Running).
+
 ```bash
-# Details of the job
+squeue -u <username>
+```
+
+To see details of the job:
+
+```bash
 scontrol show jobid <jobid>
 ```
 
-Look under the `NODELIST` column (e.g., `g101`). Wait until the job state is `R` (Running).
-
-### Stopping a Job
+### 5. Managing the Job
 
 If you need to cancel a pending or running job, use the `scancel` command with your Job ID:
 
@@ -85,17 +106,17 @@ If you need to cancel a pending or running job, use the `scancel` command with y
 scancel <jobid>
 ```
 
-### 3. Tunneling (from your local laptop)
+### 6. Tunneling (from your local laptop)
 
 Once the job is running on the compute node, set up an SSH tunnel to securely forward the traffic from your laptop to the specific compute node running your job.
 
-Run this on your **local machine** (replace `<node_name>` with the actual node name and `apandey10` with your username):
+Run this on your **local machine** (replace `<node_name>` with the actual node name, e.g., `g101`, and `<username>` with your JARVIS username):
 
 ```bash
-ssh -N -L 8080:<node_name>:8000 apandey10@jarvis.stevens.edu
+ssh -N -L 8080:<node_name>:8000 <username>@jarvis.stevens.edu
 ```
 
-### 4. Test the API Endpoints
+### 7. Test the API Endpoints
 
 Now you can start sending requests to `localhost:8080` from your laptop!
 

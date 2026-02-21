@@ -18,10 +18,15 @@ source ~/.secrets/ludo.key
 # This prevents your /home directory from freezing!
 export APPTAINER_BIND="/local/$SLURM_JOB_ID:/root/.cache/huggingface"
 
+# Force Apptainer to unpack the image on the fast local SSD
+export APPTAINER_CACHEDIR="/local/$SLURM_JOB_ID/apptainer_cache"
+export APPTAINER_TMPDIR="/local/$SLURM_JOB_ID/apptainer_tmp"
+mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
+
 # 4. Run the Docker container via Apptainer wrapped in dotenvx
 # Since we installed the standalone dotenvx binary into ~/.local/bin/
 # it loads your .env file and Apptainer inherits the environment.
-~/.local/bin/dotenvx run -- apptainer run --nv docker://vllm/vllm-openai:latest \
+~/.local/bin/dotenvx run -- apptainer run --nv ./vllm-openai.sif \
     --model Qwen/Qwen2.5-Coder-0.5B-Instruct-AWQ \
     --quantization awq \
     --gpu-memory-utilization 0.7 \
