@@ -45,16 +45,29 @@ Check the Slurm queue to see which compute node grabbed your job:
 squeue -u apandey10
 ```
 
+```bash
+# Details of the job
+scontrol show jobid <jobid>
+```
+
 Look under the `NODELIST` column (e.g., `g101`). Wait until the job state is `R` (Running).
+
+### Stopping a Job
+
+If you need to cancel a pending or running job, use the `scancel` command with your Job ID:
+
+```bash
+scancel <jobid>
+```
 
 ### 3. Tunneling (from your local laptop)
 
 Once the job is running on the compute node, set up an SSH tunnel to securely forward the traffic from your laptop to the specific compute node running your job.
 
-Run this on your **local machine** (replace `g101` with the actual node name and `apandey10` with your username):
+Run this on your **local machine** (replace `<node_name>` with the actual node name and `apandey10` with your username):
 
 ```bash
-ssh -N -L 8080:g101:8000 apandey10@jarvis.stevens.edu
+ssh -N -L 8080:<node_name>:8000 apandey10@jarvis.stevens.edu
 ```
 
 ### 4. Test the API Endpoints
