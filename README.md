@@ -136,3 +136,23 @@ curl http://localhost:8080/v1/chat/completions \
     ]
   }'
 ```
+
+### 8. Frontend Chat Interface
+
+This repository includes a static HTML chat interface to interact with the model:
+
+- The code is located at `public/index.html`.
+
+#### Testing Locally
+
+You can simply open `public/index.html` in your web browser. By default, it will fall back to using `http://localhost:8080` for API requests. Ensure your tunnel is active.
+
+#### Deploying to Vercel (or other static hosts)
+
+You can deploy the `public/` directory for free on Vercel. To configure your production endpoint:
+
+1. Go to your Vercel Project Settings.
+2. Add a new Environment Variable named `API_BASE_URL` (or `VITE_API_BASE_URL` if you eventually port to Vite).
+3. Set the value to your publicly accessible backend URL. For example, your ngrok URL or HuggingFace endpoint (e.g. `https://your-backend-url.com` - do NOT include a trailing slash).
+
+The UI will automatically pick up this variable and route requests and metrics appropriately.
