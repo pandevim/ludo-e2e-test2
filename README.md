@@ -10,9 +10,22 @@ This repository contains the configuration needed to run the 0.5B Quantized Qwen
 
 ## Setup & Execution Flow
 
+```bash
+# Encrypt the .env.production file locally
+npx @dotenvx/dotenvx encrypt -f .env.production
+```
+
 ### 0. Install dotenvx on JARVIS
 
 Since we are using encrypted `.env` files for secrets, install the standalone `dotenvx` binary into your home directory (no root required):
+
+```bash
+# 1. Create the secrets directory
+mkdir -p ~/.secrets
+
+# 2. Add the decryption key to the secrets directory
+echo 'export DOTENV_KEY="dotenv://:<put_your_actual_key_here>"' > ~/.secrets/ludo.key
+```
 
 ```bash
 # 1. Make sure your local bin directory exists
