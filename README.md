@@ -5,8 +5,6 @@ This repository contains the configuration needed to run the 0.5B Quantized Qwen
 ## Contents
 
 - `run_vllm.slurm`: The Slurm job script to allocate a GPU, securely map local fast storage for caching, and run the vLLM container via Apptainer.
-- `test_client.py`: A simple Python test script utilizing the `openai` package to test the API endpoint.
-- `requirements.txt`: Python package dependencies for testing.
 
 ## Setup & Execution Flow
 
@@ -25,6 +23,12 @@ npx @dotenvx/dotenvx encrypt -f .env.production
 ```
 
 ### 0. Install dotenvx on JARVIS
+
+```bash
+ssh <username>@jarvis.stevens.edu
+git clone https://github.com/pandevim/ludo-e2e-test2.git
+cd ludo-e2e-test2
+```
 
 Since we are using encrypted `.env` files for secrets, install the standalone `dotenvx` binary into your home directory:
 
@@ -95,20 +99,7 @@ ssh -N -L 8080:<node_name>:8000 apandey10@jarvis.stevens.edu
 
 Now you can start sending requests to `localhost:8080` from your laptop!
 
-**Option A: Python Client (Recommended)**
-First, install the requirements on your local machine:
-
-```bash
-pip install -r requirements.txt
-```
-
-Then run the simple test client:
-
-```bash
-python test_client.py
-```
-
-**Option B: cURL**
+You can use cURL to verify the endpoints:
 
 ```bash
 curl http://localhost:8080/v1/chat/completions \

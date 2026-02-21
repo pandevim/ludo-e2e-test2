@@ -20,7 +20,7 @@ export APPTAINER_BIND="/local/$SLURM_JOB_ID:/root/.cache/huggingface"
 
 # 4. Run the Docker container via Apptainer wrapped in dotenvx
 # Since we installed the standalone dotenvx binary into ~/.local/bin/
-# it decrypts your .env.vault in memory and Apptainer inherits the environment.
+# it loads your .env file and Apptainer inherits the environment.
 ~/.local/bin/dotenvx run -- apptainer run --nv docker://vllm/vllm-openai:latest \
     --model Qwen/Qwen2.5-Coder-0.5B-Instruct-AWQ \
     --quantization awq \
