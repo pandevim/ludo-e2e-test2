@@ -87,6 +87,12 @@ To see details of the job:
 scontrol show jobid <jobid>
 ```
 
+To monitor the real-time installation and server startup logs for your job:
+
+```bash
+tail -f ludo_<jobid>.out
+```
+
 ### 5. Managing the Job
 
 If you need to cancel a pending or running job, use the `scancel` command with your Job ID:
