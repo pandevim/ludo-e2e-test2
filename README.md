@@ -12,7 +12,7 @@ This repository contains the configuration needed to run the 0.5B Quantized Qwen
 
 ### 0. Install dotenvx on JARVIS
 
-Since we are using `.env.vault` for secrets, install the standalone `dotenvx` binary into your home directory (no root required):
+Since we are using encrypted `.env` files for secrets, install the standalone `dotenvx` binary into your home directory (no root required):
 
 ```bash
 # 1. Make sure your local bin directory exists
@@ -33,7 +33,7 @@ watch --color -d -n 1 'sinfo | grep --color=always -E "idle|mix|$"'
 
 ```bash
 # Submit the job to the Slurm scheduler
-# Note: dotenvx is configured in the script to securely load your HF_TOKEN from .env.vault via ~/.secrets/ludo.key
+# Note: dotenvx is configured in the script to load your encrypted .env.production via the decryption key in ~/.secrets/ludo.key
 sbatch --partition=gpu-h100 run_vllm.slurm
 ```
 
