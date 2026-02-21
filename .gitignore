@@ -60,7 +60,7 @@ venv/
 ENV/
 
 # Environment files
-.env
+.env.keys
 
 ### Slurm ###
 slurm-*.out
