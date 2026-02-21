@@ -11,8 +11,8 @@ This repository contains the configuration needed to run the 0.5B Quantized Qwen
 ## Setup & Execution Flow
 
 ```bash
-# Encrypt the .env.production file locally
-npx @dotenvx/dotenvx encrypt -f .env.production
+# Encrypt the .env file locally
+npx @dotenvx/dotenvx vault encrypt
 ```
 
 ### 0. Install dotenvx on JARVIS
