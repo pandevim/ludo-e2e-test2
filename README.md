@@ -60,17 +60,6 @@ curl -sfS "https://dotenvx.sh?directory=$HOME/.local/bin" | sh
 
 ### 3. Launch the Server on JARVIS (HPC)
 
-Before running the server, pull the required image. We force Apptainer to unpack the image on the fast local SSD:
-
-```bash
-module load apptainer
-export APPTAINER_CACHEDIR="/local/$USER/apptainer_cache"
-export APPTAINER_TMPDIR="/local/$USER/apptainer_tmp"
-mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
-
-apptainer pull vllm-openai.sif docker://vllm/vllm-openai:latest
-```
-
 Submit the job to the Slurm scheduler:
 
 ```bash

@@ -26,11 +26,11 @@ mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
 # 4. Run the Docker container via Apptainer wrapped in dotenvx
 # Since we installed the standalone dotenvx binary into ~/.local/bin/
 # it loads your .env file and Apptainer inherits the environment.
-~/.local/bin/dotenvx run -- apptainer run --nv ./vllm-openai.sif \
+~/.local/bin/dotenvx run -- apptainer run --nv docker://vllm/vllm-openai:latest \
     --model Qwen/Qwen2.5-Coder-0.5B-Instruct-AWQ \
     --quantization awq \
     --gpu-memory-utilization 0.7 \
-    --max-model-len 2048 \
+    --max-model-len 8192 \
     --enforce-eager \
     --dtype half \
     --port 8000 \
