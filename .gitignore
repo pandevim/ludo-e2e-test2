@@ -65,6 +65,7 @@ ENV/
 .env.*
 !.env.example
 !.env.vault
+!.env.production
 
 ### Slurm ###
 slurm-*.out
