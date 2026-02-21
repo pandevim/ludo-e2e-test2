@@ -32,7 +32,7 @@ Since we are using encrypted `.env` files for secrets, install the standalone `d
 # Create the secrets directory and add the decryption key to the secrets directory
 # Note the space before "mkdir" to avoid saving the command in shell history (~/.bash_history),
 # as it contains a sensitive Private Key.
- mkdir -p ~/.secrets && echo 'export DOTENV_PRIVATE_KEY_PRODUCTION="..."' > ~/.secrets/ludo.key
+ mkdir -p ~/.secrets && echo 'export DOTENV_PRIVATE_KEY_PRODUCTION="3aa1a24c84e9d299883a55cd557a9ef164dc118c9ebda9ce1486b9daf9081161"' > ~/.secrets/ludo.key
 ```
 
 ```bash
