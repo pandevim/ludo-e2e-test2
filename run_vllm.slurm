@@ -33,4 +33,5 @@ mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
     --max-model-len 2048 \
     --enforce-eager \
     --dtype half \
-    --port 8000
+    --port 8000 \
+    --allowed-origins "*"

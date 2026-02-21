@@ -113,7 +113,7 @@ Once the job is running on the compute node, set up an SSH tunnel to securely fo
 Run this on your **local machine** (replace `<node_name>` with the actual node name, e.g., `g101`, and `<username>` with your JARVIS username):
 
 ```bash
-ssh -N -L 8080:<node_name>:8000 <username>@jarvis.stevens.edu
+ssh -f -N -L 8080:<node_name>:8000 <username>@jarvis.stevens.edu
 ```
 
 ### 7. Test the API Endpoints
