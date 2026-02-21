@@ -512,7 +512,10 @@ async function send() {
   try {
     const res  = await fetch(API_URL, {
       method: 'POST',
-      headers: { 'Content-Type':'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
+      },
       body: JSON.stringify({ model: MODEL, messages: history })
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -659,7 +662,12 @@ function setOffline(offline) {
 
 async function fetchMetrics() {
   try {
-    const res = await fetch(METRICS_URL, { cache:'no-store' });
+    const res = await fetch(METRICS_URL, { 
+      cache: 'no-store',
+      headers: {
+        'ngrok-skip-browser-warning': 'true'
+      }
+    });
     if (!res.ok) throw new Error('non-200');
     const text = await res.text();
     const m    = parsePrometheus(text);

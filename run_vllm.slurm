@@ -30,8 +30,8 @@ mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
     --model Qwen/Qwen2.5-Coder-0.5B-Instruct-AWQ \
     --quantization awq \
     --gpu-memory-utilization 0.7 \
-    --max-model-len 8192 \
+    --max-model-len 2048 \
     --enforce-eager \
     --dtype half \
     --port 8000 \
-    --allowed-origins '["*"]'
+    --allowed-origins '[\"*\"]'
