@@ -34,4 +34,4 @@ mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
     --enforce-eager \
     --dtype half \
     --port 8000 \
-    --allowed-origins "*"
+    --allowed-origins '["*"]'
