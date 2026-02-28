@@ -28,12 +28,10 @@ mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
 # it loads your .env file and Apptainer inherits the environment.
 ~/.local/bin/dotenvx run -- apptainer run --nv docker://vllm/vllm-openai:latest \
     --model Qwen/Qwen3-Coder-Next \
-    --quantization fp8 \
     --kv-cache-dtype fp8 \
     --gpu-memory-utilization 0.95 \
-    --max-model-len 131072 \
+    --max-model-len 32768 \
     --enable-chunked-prefill \
-    --max-num-batched-tokens 8192 \
     --enable-prefix-caching \
     --tensor-parallel-size 2 \
     --port 8000 \
