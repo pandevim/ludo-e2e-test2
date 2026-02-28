@@ -3,8 +3,8 @@
 #SBATCH --partition=gpu-h200
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:2
+#SBATCH --cpus-per-task=16
+#SBATCH --gres=gpu:4
 #SBATCH --time=08:00:00
 #SBATCH --output=ludo_%j.out
 
@@ -30,10 +30,11 @@ mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
     --model Qwen/Qwen3-Coder-Next \
     --quantization fp8 \
     --kv-cache-dtype fp8 \
-    --gpu-memory-utilization 0.85 \
-    --max-model-len 65536 \
+    --gpu-memory-utilization 0.95 \
+    --max-model-len 131072 \
     --enable-chunked-prefill \
-    --max-num-seqs 16 \
-    --tensor-parallel-size 2 \
+    --max-num-batched-tokens 8192 \
+    --enable-prefix-caching \
+    --tensor-parallel-size 4 \
     --port 8000 \
     --allowed-origins '[\"*\"]'

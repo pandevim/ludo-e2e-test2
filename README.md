@@ -125,7 +125,7 @@ You can use cURL to verify the endpoints:
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "Qwen/Qwen2.5-Coder-0.5B-Instruct-AWQ",
+    "model": "Qwen/Qwen3-Coder-Next",
     "messages": [
       {"role": "user", "content": "Hello! How are you?"}
     ]
