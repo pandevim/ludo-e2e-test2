@@ -4,8 +4,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:1
-#SBATCH --time=01:00:00
+#SBATCH --gres=gpu:2
+#SBATCH --time=08:00:00
 #SBATCH --output=ludo_%j.out
 
 # 1. Load the Apptainer module explicitly
@@ -28,10 +28,12 @@ mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
 # it loads your .env file and Apptainer inherits the environment.
 ~/.local/bin/dotenvx run -- apptainer run --nv docker://vllm/vllm-openai:latest \
     --model Qwen/Qwen3-Coder-Next \
+    --quantization fp8 \
     --kv-cache-dtype fp8 \
     --gpu-memory-utilization 0.95 \
     --max-model-len 65536 \
     --enable-chunked-prefill \
     --max-num-seqs 16 \
+    --tensor-parallel-size 2 \
     --port 8000 \
     --allowed-origins '[\"*\"]'
