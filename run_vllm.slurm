@@ -30,7 +30,7 @@ mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
     --model Qwen/Qwen3-Coder-Next \
     --quantization fp8 \
     --kv-cache-dtype fp8 \
-    --gpu-memory-utilization 0.95 \
+    --gpu-memory-utilization 0.85 \
     --max-model-len 65536 \
     --enable-chunked-prefill \
     --max-num-seqs 16 \
