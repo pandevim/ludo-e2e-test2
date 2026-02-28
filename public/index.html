@@ -586,7 +586,7 @@
             <div class="m-bar-wrap">
               <div class="m-bar-top">
                 <span class="m-lbl">This conversation</span>
-                <span class="m-val g" id="m-ctx-val">0 / 131,072</span>
+                <span class="m-val g" id="m-ctx-val">0 / 32,768</span>
               </div>
               <div class="m-track">
                 <div class="m-fill g" id="m-ctx-bar" style="width: 0%"></div>
@@ -862,7 +862,7 @@
 ══════════════════════════════════ */
       const METRICS_URL = `${BASE_URL}/metrics`;
       const POLL_MS = 5000;
-      const MAX_TOKENS = 131072;
+      const MAX_TOKENS = 32768;
       const CHARS_PER_TOK = 4;
 
       function estimateTokens() {
