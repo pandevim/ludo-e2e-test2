@@ -38,7 +38,6 @@ device          = None
 FRAME_SIZE      = None   # samples per mimi frame (1920 @ 24kHz / 12.5fps)
 
 # Semaphore to cap concurrent GPU kernel launches and prevent OOM under load.
-# Tune MAX_CONCURRENT_SESSIONS to your container's available VRAM.
 MAX_CONCURRENT_SESSIONS = 4
 _gpu_semaphore: asyncio.Semaphore | None = None   # initialised in lifespan
 
@@ -55,12 +54,9 @@ def load_model():
     from moshi.models.loaders import CheckpointInfo
 
     checkpoint_info = CheckpointInfo.from_hf_repo("kyutai/stt-1b-en_fr")
-    # NOTE: mimi is NOT stored as a global — each session gets its own instance
-    # via checkpoint_info.get_mimi() to avoid shared streaming state corruption.
     text_tokenizer  = checkpoint_info.get_text_tokenizer()
     lm              = checkpoint_info.get_moshi(device=device, dtype=dtype)
 
-    # Use a throw-away mimi just to read the frame size, then discard it.
     _tmp_mimi = checkpoint_info.get_mimi(device=device)
     FRAME_SIZE = int(_tmp_mimi.sample_rate / _tmp_mimi.frame_rate)   # 1920
     del _tmp_mimi
@@ -71,37 +67,37 @@ def load_model():
 # ── Per-connection inference session ──────────────────────────────────────────
 class CausalSTTSession:
     """
-    SOTA Continuous Inference State Machine.
+    Each session owns its own `mimi` encoder instance and enters the streaming
+    contexts via proper context managers (not streaming_forever) so that close()
+    can call __exit__ and release the shared `lm` streaming state.
 
-    Each session owns its own `mimi` encoder instance so that
-    streaming state (hidden states, ring buffers) is completely
-    isolated between concurrent WebSocket connections.
+    This allows a fresh session to be created after each flush without hitting
+    the "already streaming!" assertion inside the moshi streaming module.
     """
 
     def __init__(self):
-        # Per-session acoustic encoder — never share the global mimi.
         self.mimi = checkpoint_info.get_mimi(device=device)
-
-        # Ring buffer for incoming raw PCM floats
         self.pcm_buffer = np.array([], dtype=np.float32)
-
         self.lm_gen = LMGen(lm, **checkpoint_info.lm_gen_config)
 
-        # Initialise streaming context for batch size 1
-        self.mimi.streaming_forever(1)
-        self.lm_gen.streaming_forever(1)
+        # FIX: use streaming() as a proper context manager instead of
+        # streaming_forever(), which discards the CM and makes __exit__
+        # unreachable.  Storing the CMs lets close() tear down state so
+        # the next session can re-enter without "already streaming!" errors.
+        self._mimi_ctx = self.mimi.streaming(1)
+        self._lm_ctx   = self.lm_gen.streaming(1)
+        self._mimi_ctx.__enter__()
+        self._lm_ctx.__enter__()
 
         self.first_step = True
 
-    def reset(self):
-        """Reset streaming state for the next utterance."""
-        self.pcm_buffer = np.array([], dtype=np.float32)
-        self.first_step = True
-        # Re-create fresh mimi and lm_gen instances with clean streaming state
-        self.mimi = checkpoint_info.get_mimi(device=device)
-        self.lm_gen = LMGen(lm, **checkpoint_info.lm_gen_config)
-        self.mimi.streaming_forever(1)
-        self.lm_gen.streaming_forever(1)
+    def close(self):
+        """Exit streaming contexts, releasing shared `lm` streaming state."""
+        for ctx in (self._lm_ctx, self._mimi_ctx):
+            try:
+                ctx.__exit__(None, None, None)
+            except Exception as e:
+                log.warning(f"Error closing streaming context: {e}")
 
     def _is_special_token(self, tok: int) -> bool:
         return tok in (0, 3, text_tokenizer.eos_id(), text_tokenizer.bos_id())
@@ -116,14 +112,10 @@ class CausalSTTSession:
 
         emitted_text = ""
 
-        # Drain the buffer one complete acoustic frame at a time
         while len(self.pcm_buffer) >= FRAME_SIZE:
             frame = self.pcm_buffer[:FRAME_SIZE]
             self.pcm_buffer = self.pcm_buffer[FRAME_SIZE:]
 
-            # FIX: correct reshape to [batch=1, channels=1, samples=FRAME_SIZE]
-            # Previously `in_pcm[None, 0:1]` sliced only the first *sample*,
-            # yielding shape [1, 1] instead of [1, 1, FRAME_SIZE].
             in_pcm = (
                 torch.from_numpy(frame)
                 .to(device=device)
@@ -133,17 +125,14 @@ class CausalSTTSession:
             with torch.no_grad():
                 codes = self.mimi.encode(in_pcm)
 
-                # The transformer requires one prime step before producing tokens.
                 if self.first_step:
                     self.lm_gen.step(codes)
                     self.first_step = False
-                    continue   # prime step produces no useful output; skip decode
+                    continue
 
                 tokens = self.lm_gen.step(codes)
                 if tokens is not None:
-                    # tokens shape: [1, dep_q+1, 1]
                     text_tok = tokens[0, 0, 0].item()
-
                     if not self._is_special_token(text_tok):
                         piece = text_tokenizer.id_to_piece(text_tok).replace("▁", " ")
                         emitted_text += piece
@@ -154,7 +143,6 @@ class CausalSTTSession:
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.get("/health")
 async def health():
-    # FIX: model name now matches the checkpoint actually loaded.
     return JSONResponse({"status": "ok", "model": "kyutai/stt-1b-en_fr"})
 
 
@@ -162,24 +150,24 @@ async def health():
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
 
-    # FIX: gate concurrent GPU sessions to avoid OOM under load.
     async with _gpu_semaphore:
         session = CausalSTTSession()
         log.info("Continuous STT client connected")
         await ws.send_text(json.dumps({"type": "ready"}))
+
+        accumulated_text = []
 
         try:
             while True:
                 data = await ws.receive()
 
                 if "bytes" in data and data["bytes"]:
-                    # Offload the blocking CUDA work to a thread pool so the
-                    # ASGI event loop remains responsive to other connections.
                     new_text = await asyncio.to_thread(
                         session.process_stream, data["bytes"]
                     )
 
                     if new_text:
+                        accumulated_text.append(new_text)
                         await ws.send_text(json.dumps({
                             "type":  "transcript_chunk",
                             "text":  new_text,
@@ -190,19 +178,24 @@ async def websocket_endpoint(ws: WebSocket):
                     msg = json.loads(data["text"])
 
                     if msg.get("type") == "flush":
-                        log.info("Flush received — emitting final transcript and resetting.")
-
-                        # Drain any remaining buffered audio before reset
-                        leftover = session.process_stream(b"")
-                        final_text = leftover.strip()
+                        full_text = "".join(accumulated_text).strip()
+                        log.info(f"Flush received. Transcript: {full_text!r}")
 
                         await ws.send_text(json.dumps({
-                            "type":  "flush_ack",
-                            "text":  final_text,   # may be empty string, orchestrator should handle
+                            "type":  "transcript",
+                            "text":  full_text,
                             "final": True,
                         }))
 
-                        session.reset() 
+                        # FIX: exit streaming contexts on the old session BEFORE
+                        # creating the new one, so the shared `lm` object is no
+                        # longer marked as streaming when the new session calls
+                        # lm_gen.streaming(1).__enter__().
+                        session.close()
+                        accumulated_text = []
+                        session = CausalSTTSession()
+
+                        await ws.send_text(json.dumps({"type": "ready"}))
 
         except WebSocketDisconnect:
             log.info("STT client disconnected")
@@ -212,6 +205,9 @@ async def websocket_endpoint(ws: WebSocket):
                 await ws.send_text(json.dumps({"type": "error", "message": str(e)}))
             except Exception:
                 pass
+        finally:
+            # Always clean up streaming state on disconnect/error
+            session.close()
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

@@ -32,9 +32,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 STT_WS  = "ws://localhost:3001/ws"
 LLM_URL = "http://localhost:3002"
 TTS_URL = "http://localhost:3003"
+LLM_API_KEY = None
 
-# NOTE: must match the model name passed to vLLM via --model in run.sh
-LLM_MODEL = "google/gemma-2b-AWQ"
+LLM_MODEL = "deepseek-ai/DeepSeek-V3.2"
 
 SYSTEM_PROMPT = (
     "You are a helpful, concise voice assistant. "
@@ -57,9 +57,13 @@ async def call_llm(history: list[dict]) -> str:
     headers = {}
     if LLM_API_KEY:
         headers["Authorization"] = f"Bearer {LLM_API_KEY}"
+
+    # FIX: LLM_URL already contains the base path (e.g. "https://api.featherless.ai/v1"),
+    # so append only "/chat/completions" — not "/v1/chat/completions".
+    # The previous code produced a doubled path: /v1/v1/chat/completions → 404.
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(
-            f"{LLM_URL}/v1/chat/completions",
+            f"{LLM_URL}/chat/completions",
             json=payload,
             headers=headers,
         )
@@ -113,62 +117,59 @@ class Session:
                             await self.ws.send_text(json.dumps({"type": "pong"}))
 
             async def pipeline_runner():
-                accumulated_text = ""
+                """Collect final STT transcript → LLM → TTS → send to client."""
                 async for raw in stt_ws:
-                    log.info(f"STT message received: {raw[:200]}")
                     msg = json.loads(raw)
+                    log.info(f"STT message received: {raw}")
 
-                    if msg["type"] == "transcript_chunk":
-                        accumulated_text += msg.get("text", "")
-                        # Optional: send partial transcript to client
-                        await self.ws.send_text(json.dumps({
-                            "type": "transcript_partial",
-                            "text": accumulated_text,
-                        }))
+                    # Wait for the final transcript emitted after a flush
+                    if msg["type"] != "transcript" or not msg.get("final"):
+                        continue
 
-                    elif msg["type"] == "flush_ack":
-                        full_text = accumulated_text.strip()
-                        accumulated_text = ""  # reset for next utterance
-                        if not full_text:
-                            continue
+                    full_text = msg.get("text", "").strip()
+                    if not full_text:
+                        continue
 
-                        log.info(f"User said: {full_text!r}")
-                        await self.ws.send_text(json.dumps({
-                            "type": "transcript",
-                            "text": full_text,
-                        }))
+                    log.info(f"User said: {full_text!r}")
+                    await self.ws.send_text(json.dumps({
+                        "type": "transcript",
+                        "text": full_text,
+                    }))
 
-                        # ── LLM ──────────────────────────────────────────────
-                        await self.send_status("Thinking...")
-                        self.history.append({"role": "user", "content": full_text})
-                        try:
-                            reply = await call_llm(self.history)
-                        except Exception as e:
-                            log.error(f"LLM error: {e}")
-                            await self.send_status(f"LLM error: {e}")
-                            self.history.pop()
-                            continue
+                    # ── LLM ──────────────────────────────────────────────────
+                    await self.send_status("Thinking...")
+                    self.history.append({"role": "user", "content": full_text})
+                    try:
+                        reply = await call_llm(self.history)
+                    except Exception as e:
+                        log.error(f"LLM error: {e}")
+                        await self.send_status(f"LLM error: {e}")
+                        self.history.pop()
+                        continue
 
-                        self.history.append({"role": "assistant", "content": reply})
-                        await self.ws.send_text(json.dumps({
-                            "type": "assistant_text", "text": reply,
-                        }))
+                    self.history.append({"role": "assistant", "content": reply})
+                    log.info(f"Assistant: {reply!r}")
+                    await self.ws.send_text(json.dumps({
+                        "type": "assistant_text",
+                        "text": reply,
+                    }))
 
-                        # ── TTS ──────────────────────────────────────────────
-                        await self.send_status("Synthesizing speech...")
-                        try:
-                            audio = await call_tts(reply)
-                        except Exception as e:
-                            log.error(f"TTS error: {e}")
-                            await self.send_status(f"TTS error: {e}")
-                            continue
+                    # ── TTS ──────────────────────────────────────────────────
+                    await self.send_status("Synthesizing speech...")
+                    try:
+                        audio = await call_tts(reply)
+                    except Exception as e:
+                        log.error(f"TTS error: {e}")
+                        await self.send_status(f"TTS error: {e}")
+                        continue
 
-                        chunk_size = 4 * 2400
-                        for i in range(0, len(audio), chunk_size):
-                            await self.ws.send_bytes(audio[i : i + chunk_size])
+                    # Stream in 100 ms chunks (float32 = 4 bytes × 2400 samples)
+                    chunk_size = 4 * 2400
+                    for i in range(0, len(audio), chunk_size):
+                        await self.ws.send_bytes(audio[i : i + chunk_size])
 
-                        await self.ws.send_text(json.dumps({"type": "audio_done"}))
-                        await self.send_status("Ready – start speaking")
+                    await self.ws.send_text(json.dumps({"type": "audio_done"}))
+                    await self.send_status("Ready – start speaking")
 
             fwd_task  = asyncio.create_task(audio_forwarder())
             pipe_task = asyncio.create_task(pipeline_runner())
@@ -204,7 +205,6 @@ async def health():
 
 @app.get("/voices")
 async def voices():
-    """Proxy the list of available TTS voices."""
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(f"{TTS_URL}/voices")
         resp.raise_for_status()
@@ -213,11 +213,6 @@ async def voices():
 
 @app.post("/synthesize")
 async def synthesize(body: dict):
-    """
-    Direct TTS call — useful for one-shot synthesis without a WebSocket session.
-    Body: {"text": "...", "voice": "<optional>"}
-    Returns: audio/pcm (float32 LE, mono, 24 kHz)
-    """
     text  = body.get("text", "").strip()
     voice = body.get("voice")
     if not text:
@@ -236,11 +231,6 @@ async def synthesize(body: dict):
 
 @app.post("/chat")
 async def chat(body: dict):
-    """
-    Single-turn LLM call without audio — useful for testing or text-only clients.
-    Body: {"message": "...", "history": [{"role":"user","content":"..."},...]}
-    Returns: {"reply": "..."}
-    """
     message = body.get("message", "").strip()
     history = body.get("history", [])
     if not message:
@@ -264,12 +254,11 @@ async def ws_endpoint(ws: WebSocket):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--stt-ws",   default="ws://localhost:3001/ws")
-    parser.add_argument("--llm-url",  default="http://localhost:3002")
+    parser.add_argument("--llm-url",  default="http://localhost:3002/v1",
+                        help="Base URL including /v1 prefix, e.g. https://api.featherless.ai/v1")
     parser.add_argument("--tts-url",  default="http://localhost:3003")
-    parser.add_argument("--llm-model", default=LLM_MODEL,
-                        help="Model name sent to vLLM (must match --model in run.sh)")
-    parser.add_argument("--llm-api-key", default=None,
-                        help="API key for the LLM service (e.g. Featherless)")
+    parser.add_argument("--llm-model", default=LLM_MODEL)
+    parser.add_argument("--llm-api-key", default=None)
     parser.add_argument("--port",     type=int, default=3004)
     parser.add_argument("--host",     default="0.0.0.0")
     args = parser.parse_args()
