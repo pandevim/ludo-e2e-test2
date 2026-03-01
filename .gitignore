@@ -61,6 +61,7 @@ ENV/
 
 # Environment files
 .env.keys
+.env.raw
 
 ### Slurm ###
 slurm-*.out
