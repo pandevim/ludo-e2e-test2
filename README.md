@@ -70,7 +70,7 @@ sbatch --partition=gpu-h100 run_vllm.slurm
 _(Optional)_ Watch the Slurm queue for available nodes:
 
 ```bash
-watch --color -d -n 1 'sinfo | grep --color=always -E "idle|mix|$"'
+watch --color -d -n 2 'sinfo | grep --color=always -E "idle|mix|$"'
 ```
 
 ### 4. Identify the Compute Node
@@ -78,19 +78,16 @@ watch --color -d -n 1 'sinfo | grep --color=always -E "idle|mix|$"'
 Check the Slurm queue to see which compute node grabbed your job. Look under the `NODELIST` column (e.g., `g101`). Wait until the job state is `R` (Running).
 
 ```bash
-squeue -u <username>
-```
+watch -n 2 squeue -u $USER
 
-To see details of the job:
-
-```bash
-scontrol show jobid <jobid>
+# To see details of the job:
+# scontrol show jobid <jobid>
 ```
 
 To monitor the real-time installation and server startup logs for your job:
 
 ```bash
-tail -f ludo_<jobid>.out
+tail -f <job_name>_<jobid>.out
 ```
 
 ### 5. Managing the Job
