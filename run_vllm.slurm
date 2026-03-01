@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=ludo
-#SBATCH --partition=gpu-h100
+#SBATCH --partition=gpu-h200
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:1
 #SBATCH --time=08:00:00
 #SBATCH --output=ludo_%j.out
 
@@ -35,6 +35,6 @@ mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
     --enable-chunked-prefill \
     --max-num-batched-tokens 8192 \
     --enable-prefix-caching \
-    --tensor-parallel-size 2 \ # uncomment if you want to use 2 GPUs with vLLM's tensor parallelism
+    --tensor-parallel-size 1 \
     --port 8000 \
     --allowed-origins '[\"*\"]'
