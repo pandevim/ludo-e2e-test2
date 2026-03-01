@@ -96,6 +96,10 @@ chmod +x LOCAL_USE_ONLY_unmute.sh
 - **HTTPS/WSS**: for production, put nginx in front of port 8080.
 
 ```bash
+apptainer build --fakeroot moshi_with_git.sif moshi_with_git.def
+```
+
+```bash
 python3 - <<'EOF'
 import asyncio, websockets, json, subprocess
 
