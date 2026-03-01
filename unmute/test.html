@@ -3,23 +3,22 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Unmute — Voice Pipeline</title>
+<title>Unmute</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&family=IBM+Plex+Sans:wght@300;400&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --bg:       #0a0b0d;
-    --surface:  #111316;
-    --border:   #1f2228;
-    --accent:   #00e5a0;
-    --accent2:  #005c41;
-    --muted:    #3a3f4a;
-    --text:     #c8cdd8;
-    --dim:      #5a6070;
-    --danger:   #ff4d6a;
-    --warn:     #ffaa33;
-    --mono:     'Share Tech Mono', monospace;
-    --sans:     'DM Sans', sans-serif;
+    --bg:      #080909;
+    --surface: #0f1011;
+    --border:  #1a1d21;
+    --accent:  #00e5a0;
+    --accent2: #003d2a;
+    --text:    #bfc4cf;
+    --dim:     #454d5c;
+    --danger:  #ff4d6a;
+    --warn:    #ffaa33;
+    --mono:    'IBM Plex Mono', monospace;
+    --sans:    'IBM Plex Sans', sans-serif;
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -28,558 +27,409 @@
     background: var(--bg);
     color: var(--text);
     font-family: var(--sans);
+    font-weight: 300;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 0 16px 40px;
-    overflow-x: hidden;
+    justify-content: center;
+    padding: 24px 16px;
   }
 
-  /* scanline overlay */
-  body::before {
-    content: '';
-    position: fixed; inset: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,.08) 2px,
-      rgba(0,0,0,.08) 4px
-    );
-    pointer-events: none;
-    z-index: 100;
+  .container {
+    width: 100%;
+    max-width: 520px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
   }
 
-  /* ── Header ─────────────────────────────────────────────────────── */
-  header {
-    width: 100%; max-width: 760px;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 24px 0 20px;
-    border-bottom: 1px solid var(--border);
+  /* ── Top bar ─────────────────────────────────────── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
   }
 
   .logo {
     font-family: var(--mono);
-    font-size: 1.1rem;
-    letter-spacing: .12em;
+    font-size: .8rem;
+    letter-spacing: .2em;
     color: var(--accent);
   }
-  .logo span { color: var(--dim); }
 
-  .status-pill {
+  .conn-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .conn-row input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    color: var(--dim);
     font-family: var(--mono);
     font-size: .72rem;
-    letter-spacing: .1em;
-    padding: 4px 12px;
-    border-radius: 2px;
-    border: 1px solid var(--border);
-    color: var(--dim);
-    transition: all .3s;
-  }
-  .status-pill.connected  { color: var(--accent); border-color: var(--accent2); background: rgba(0,229,160,.05); }
-  .status-pill.connecting { color: var(--warn);   border-color: rgba(255,170,51,.3); }
-  .status-pill.error      { color: var(--danger); border-color: rgba(255,77,106,.3); }
-
-  /* ── Connection Bar ─────────────────────────────────────────────── */
-  .conn-bar {
-    width: 100%; max-width: 760px;
-    display: flex; gap: 8px;
-    margin-top: 20px;
-  }
-
-  .conn-bar input {
-    flex: 1;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: var(--mono);
-    font-size: .85rem;
-    padding: 10px 14px;
-    border-radius: 3px;
+    padding: 2px 4px;
     outline: none;
-    transition: border-color .2s;
+    width: 180px;
+    transition: border-color .2s, color .2s;
   }
-  .conn-bar input:focus { border-color: var(--accent); }
-  .conn-bar input::placeholder { color: var(--muted); }
+  .conn-row input:focus { border-color: var(--accent); color: var(--text); }
 
-  button {
-    font-family: var(--sans);
-    font-size: .85rem;
-    font-weight: 500;
+  .btn-conn {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .1em;
+    padding: 5px 12px;
+    background: transparent;
+    border: 1px solid var(--dim);
+    color: var(--dim);
     cursor: pointer;
-    border: none;
-    border-radius: 3px;
     transition: all .2s;
   }
+  .btn-conn:hover        { border-color: var(--accent); color: var(--accent); }
+  .btn-conn.active       { border-color: var(--danger); color: var(--danger); }
+  .btn-conn.active:hover { background: rgba(255,77,106,.08); }
 
-  .btn-connect {
-    background: var(--accent2);
-    color: var(--accent);
-    border: 1px solid var(--accent);
-    padding: 10px 20px;
-    letter-spacing: .05em;
+  .pill {
+    font-family: var(--mono);
+    font-size: .6rem;
+    letter-spacing: .12em;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    color: var(--dim);
   }
-  .btn-connect:hover { background: rgba(0,229,160,.15); }
-  .btn-connect.disconnect { background: rgba(255,77,106,.1); color: var(--danger); border-color: var(--danger); }
-  .btn-connect.disconnect:hover { background: rgba(255,77,106,.2); }
+  .pill.on  { color: var(--accent); border-color: var(--accent2); }
+  .pill.err { color: var(--danger); border-color: rgba(255,77,106,.3); }
+  .pill.spin::after { content: '…'; animation: dots 1s steps(3,end) infinite; }
+  @keyframes dots { 0%{content:'.'} 33%{content:'..'} 66%{content:'...'} }
 
-  /* ── Main Grid ──────────────────────────────────────────────────── */
-  .main {
-    width: 100%; max-width: 760px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-top: 16px;
-  }
-
-  /* ── Panels ─────────────────────────────────────────────────────── */
-  .panel {
+  /* ── Conversation ────────────────────────────────── */
+  .transcript {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-  .panel.full { grid-column: span 2; }
-
-  .panel-label {
-    font-family: var(--mono);
-    font-size: .65rem;
-    letter-spacing: .15em;
-    color: var(--dim);
-    padding: 8px 14px;
-    border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 8px;
-  }
-  .panel-label .dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--muted);
-    flex-shrink: 0;
-  }
-  .panel-label .dot.live { background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: pulse 1.4s ease-in-out infinite; }
-  .panel-label .dot.err  { background: var(--danger); }
-
-  @keyframes pulse {
-    0%,100% { opacity: 1; } 50% { opacity: .3; }
-  }
-
-  /* ── Mic section ────────────────────────────────────────────────── */
-  .mic-section {
+    border-top: none;
+    min-height: 280px;
+    max-height: 340px;
+    overflow-y: auto;
+    padding: 20px 18px;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 16px;
-    padding: 24px 16px;
-  }
-
-  .mic-btn {
-    width: 80px; height: 80px;
-    border-radius: 50%;
-    background: transparent;
-    border: 2px solid var(--muted);
-    color: var(--muted);
-    font-size: 28px;
-    display: flex; align-items: center; justify-content: center;
-    transition: all .25s;
-    position: relative;
-  }
-  .mic-btn:hover { border-color: var(--text); color: var(--text); }
-  .mic-btn.recording {
-    border-color: var(--danger);
-    color: var(--danger);
-    box-shadow: 0 0 0 0 rgba(255,77,106,.4);
-    animation: ripple 1.2s ease-out infinite;
-  }
-  .mic-btn.disabled { opacity: .3; cursor: not-allowed; }
-
-  @keyframes ripple {
-    0%  { box-shadow: 0 0 0 0 rgba(255,77,106,.4); }
-    70% { box-shadow: 0 0 0 16px rgba(255,77,106,0); }
-    100%{ box-shadow: 0 0 0 0 rgba(255,77,106,0); }
-  }
-
-  .mic-hint {
-    font-size: .78rem;
-    color: var(--dim);
-    text-align: center;
-    letter-spacing: .02em;
-  }
-
-  /* ── Waveform ───────────────────────────────────────────────────── */
-  canvas#waveform {
-    width: 100%; height: 56px;
-    display: block;
-  }
-
-  /* ── Transcript ─────────────────────────────────────────────────── */
-  .transcript-box {
-    height: 220px;
-    overflow-y: auto;
-    padding: 12px 14px;
-    font-size: .82rem;
-    line-height: 1.7;
+    gap: 14px;
     scrollbar-width: thin;
-    scrollbar-color: var(--muted) transparent;
+    scrollbar-color: var(--border) transparent;
   }
 
-  .turn { margin-bottom: 10px; display: flex; gap: 10px; }
-  .turn-label {
-    font-family: var(--mono);
-    font-size: .65rem;
-    letter-spacing: .08em;
-    flex-shrink: 0;
-    padding-top: 2px;
-  }
-  .turn.user   .turn-label { color: var(--warn); }
-  .turn.assistant .turn-label { color: var(--accent); }
-  .turn-text { color: var(--text); }
-
-  /* ── Log ────────────────────────────────────────────────────────── */
-  .log-box {
-    height: 140px;
-    overflow-y: auto;
-    padding: 10px 14px;
+  .empty {
+    color: var(--dim);
     font-family: var(--mono);
     font-size: .72rem;
-    line-height: 1.8;
-    color: var(--dim);
-    scrollbar-width: thin;
-    scrollbar-color: var(--muted) transparent;
+    text-align: center;
+    margin: auto;
+    letter-spacing: .05em;
   }
-  .log-entry { display: flex; gap: 10px; }
-  .log-ts { color: var(--muted); flex-shrink: 0; }
-  .log-msg.ok  { color: var(--accent); }
-  .log-msg.err { color: var(--danger); }
-  .log-msg.info{ color: var(--dim); }
 
-  /* ── Audio playback indicator ───────────────────────────────────── */
-  .speaking-bar {
-    display: flex; align-items: center; gap: 6px;
-    padding: 8px 14px;
+  .turn {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .turn-label {
     font-family: var(--mono);
-    font-size: .65rem;
-    color: var(--dim);
-    border-top: 1px solid var(--border);
-    min-height: 34px;
+    font-size: .6rem;
+    letter-spacing: .15em;
   }
-  .speaking-bar.active { color: var(--accent); }
-  .bars { display: flex; gap: 2px; align-items: flex-end; height: 16px; }
-  .bar {
-    width: 3px; background: var(--muted); border-radius: 1px;
-    animation: none;
+  .turn.user   .turn-label { color: var(--warn); }
+  .turn.agent  .turn-label { color: var(--accent); }
+  .turn-text {
+    font-size: .85rem;
+    line-height: 1.65;
+    color: var(--text);
   }
-  .speaking-bar.active .bar {
-    background: var(--accent);
-  }
-  .speaking-bar.active .bar:nth-child(1) { animation: bar 0.8s ease-in-out .0s infinite; }
-  .speaking-bar.active .bar:nth-child(2) { animation: bar 0.8s ease-in-out .15s infinite; }
-  .speaking-bar.active .bar:nth-child(3) { animation: bar 0.8s ease-in-out .3s infinite; }
-  .speaking-bar.active .bar:nth-child(4) { animation: bar 0.8s ease-in-out .45s infinite; }
-  .speaking-bar.active .bar:nth-child(5) { animation: bar 0.8s ease-in-out .6s infinite; }
+  .turn.agent .turn-text { color: #e0e4ed; }
 
-  @keyframes bar {
-    0%,100% { height: 3px; } 50% { height: 14px; }
+  /* streaming cursor */
+  .cursor::after {
+    content: '▍';
+    animation: blink .7s step-end infinite;
+    color: var(--accent);
+    font-size: .7em;
   }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
-  /* ── Footer ─────────────────────────────────────────────────────── */
-  footer {
-    width: 100%; max-width: 760px;
-    margin-top: 14px;
-    display: flex; gap: 8px; flex-wrap: wrap;
-    padding-top: 14px;
-    border-top: 1px solid var(--border);
-  }
-
-  .chip {
-    font-family: var(--mono);
-    font-size: .65rem;
-    letter-spacing: .08em;
-    padding: 4px 10px;
+  /* ── Controls ────────────────────────────────────── */
+  .controls {
+    background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 2px;
+    border-top: none;
+    padding: 18px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  /* Mic button */
+  .mic-btn {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    border: 1.5px solid var(--dim);
+    background: transparent;
+    color: var(--dim);
+    font-size: 22px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: all .2s;
+    position: relative;
+  }
+  .mic-btn:hover:not(.off) { border-color: var(--text); color: var(--text); }
+  .mic-btn.off   { opacity: .28; cursor: not-allowed; }
+  .mic-btn.live  {
+    border-color: var(--danger);
+    color: var(--danger);
+    animation: ripple 1.3s ease-out infinite;
+  }
+  @keyframes ripple {
+    0%  { box-shadow: 0 0 0 0   rgba(255,77,106,.45); }
+    70% { box-shadow: 0 0 0 14px rgba(255,77,106,0); }
+    100%{ box-shadow: 0 0 0 0   rgba(255,77,106,0); }
+  }
+
+  /* Right side of controls */
+  .ctrl-right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .mic-status {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .08em;
     color: var(--dim);
   }
-  .chip b { color: var(--text); font-weight: 400; }
+  .mic-status.live  { color: var(--danger); }
+  .mic-status.speak { color: var(--accent); }
+
+  /* Waveform */
+  canvas#wave {
+    width: 100%;
+    height: 36px;
+    display: block;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Speaking bars */
+  .bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 20px;
+  }
+  .bar {
+    width: 3px;
+    background: var(--dim);
+    border-radius: 1px;
+    height: 3px;
+    transition: background .2s;
+  }
+  .bars.speaking .bar { background: var(--accent); }
+  .bars.speaking .bar:nth-child(1) { animation: b .7s ease-in-out .00s infinite; }
+  .bars.speaking .bar:nth-child(2) { animation: b .7s ease-in-out .12s infinite; }
+  .bars.speaking .bar:nth-child(3) { animation: b .7s ease-in-out .24s infinite; }
+  .bars.speaking .bar:nth-child(4) { animation: b .7s ease-in-out .36s infinite; }
+  .bars.speaking .bar:nth-child(5) { animation: b .7s ease-in-out .48s infinite; }
+  .bars.speaking .bar:nth-child(6) { animation: b .7s ease-in-out .60s infinite; }
+  @keyframes b { 0%,100%{height:3px} 50%{height:18px} }
+
+  .output-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .output-label {
+    font-family: var(--mono);
+    font-size: .62rem;
+    letter-spacing: .1em;
+    color: var(--dim);
+    flex-shrink: 0;
+  }
+  .output-label.speaking { color: var(--accent); }
 </style>
 </head>
 <body>
 
-<!-- Header -->
-<header>
-  <div class="logo">UNMUTE<span>/voice</span></div>
-  <div class="status-pill" id="statusPill">DISCONNECTED</div>
-</header>
+<div class="container">
 
-<!-- Connection Bar -->
-<div class="conn-bar">
-  <input id="wsUrl" type="text" value="ws://localhost:3004/ws" placeholder="ws://host:3004/ws" />
-  <button class="btn-connect" id="connectBtn" onclick="toggleConnection()">CONNECT</button>
-</div>
-
-<!-- Main -->
-<div class="main">
-
-  <!-- Mic + Waveform -->
-  <div class="panel">
-    <div class="panel-label">
-      <div class="dot" id="micDot"></div>
-      MICROPHONE INPUT
+  <!-- Top bar: logo + connection -->
+  <div class="topbar">
+    <div class="logo">UNMUTE</div>
+    <div class="conn-row">
+      <input id="wsUrl" type="text" value="ws://localhost:3004/ws" spellcheck="false" />
+      <button class="btn-conn" id="connectBtn" onclick="toggleConnection()">CONNECT</button>
+      <div class="pill" id="statusPill">OFF</div>
     </div>
-    <div class="mic-section">
-      <button class="mic-btn disabled" id="micBtn" onclick="toggleMic()" title="Push to talk / hold to record">
-        🎙
-      </button>
-      <div class="mic-hint" id="micHint">Connect first to enable mic</div>
-    </div>
-    <canvas id="waveform"></canvas>
   </div>
 
-  <!-- Playback -->
-  <div class="panel">
-    <div class="panel-label">
-      <div class="dot" id="ttsDot"></div>
-      AUDIO OUTPUT
-    </div>
-    <div class="mic-section" style="padding-top:28px">
-      <div style="font-size:40px">🔊</div>
-      <div class="mic-hint" id="playbackStatus">Waiting for response…</div>
-      <div style="width:100%; background: var(--bg); border-radius:2px; height:4px; overflow:hidden; margin-top:4px;">
-        <div id="playbackBar" style="height:100%; width:0%; background:var(--accent); transition:width .1s;"></div>
+  <!-- Conversation transcript -->
+  <div class="transcript" id="transcriptBox">
+    <div class="empty" id="emptyMsg">— say something —</div>
+  </div>
+
+  <!-- Controls: mic + output visualizer -->
+  <div class="controls">
+    <button class="mic-btn off" id="micBtn" onclick="toggleMic()">🎙</button>
+
+    <div class="ctrl-right">
+      <canvas id="wave"></canvas>
+      <div class="output-row">
+        <div class="bars" id="bars">
+          <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+          <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+        </div>
+        <div class="output-label" id="outputLabel">IDLE</div>
       </div>
+      <div class="mic-status" id="micStatus">connect to start</div>
     </div>
-    <div class="speaking-bar" id="speakingBar">
-      <div class="bars">
-        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
-        <div class="bar"></div><div class="bar"></div>
-      </div>
-      <span id="speakingLabel">IDLE</span>
-    </div>
-  </div>
-
-  <!-- Transcript -->
-  <div class="panel full">
-    <div class="panel-label">
-      <div class="dot" id="transcriptDot"></div>
-      CONVERSATION
-      <span style="margin-left:auto; cursor:pointer; font-size:.7rem;" onclick="clearTranscript()">CLEAR</span>
-    </div>
-    <div class="transcript-box" id="transcriptBox">
-      <div style="color:var(--muted); font-style:italic; font-size:.78rem;">Conversation will appear here…</div>
-    </div>
-  </div>
-
-  <!-- Log -->
-  <div class="panel full">
-    <div class="panel-label">
-      <div class="dot"></div>
-      SYSTEM LOG
-    </div>
-    <div class="log-box" id="logBox"></div>
   </div>
 
 </div>
-
-<!-- Footer chips -->
-<footer>
-  <div class="chip">STT <b>kyutai/stt-2.6b-en</b></div>
-  <div class="chip">LLM <b>deepseek-ai/DeepSeek-V3.2</b></div>
-  <div class="chip">TTS <b>kyutai/tts-0.75b-en-public</b></div>
-  <div class="chip">ORCH <b>:3004</b></div>
-</footer>
 
 <audio id="audioPlayer"></audio>
 
 <script>
-// ── State ──────────────────────────────────────────────────────────────────
-let ws            = null;
-let mediaStream   = null;
-let audioCtx      = null;
-let analyser      = null;
-let processor     = null;
-let recording     = false;
-let audioQueue    = [];
-let isPlaying     = false;
+// ── State ──────────────────────────────────────────────────────────
+let ws = null, mediaStream = null, audioCtx = null;
+let analyser = null, processor = null, recording = false;
 
-const SAMPLE_RATE  = 16000;  // expected by STT
-const CHUNK_MS     = 60;
+const playbackCtx = new (window.AudioContext || window.webkitAudioContext)();
+let playbackQueue = [], playbackBusy = false;
 
-// ── UI refs ────────────────────────────────────────────────────────────────
-const statusPill     = document.getElementById('statusPill');
-const connectBtn     = document.getElementById('connectBtn');
-const wsUrlInput     = document.getElementById('wsUrl');
-const micBtn         = document.getElementById('micBtn');
-const micHint        = document.getElementById('micHint');
-const micDot         = document.getElementById('micDot');
-const ttsDot         = document.getElementById('ttsDot');
-const speakingBar    = document.getElementById('speakingBar');
-const speakingLabel  = document.getElementById('speakingLabel');
-const transcriptBox  = document.getElementById('transcriptBox');
-const logBox         = document.getElementById('logBox');
-const waveCanvas     = document.getElementById('waveform');
-const ctx2d          = waveCanvas.getContext('2d');
-const playbackStatus = document.getElementById('playbackStatus');
-const playbackBar    = document.getElementById('playbackBar');
+// ── UI refs ────────────────────────────────────────────────────────
+const statusPill    = document.getElementById('statusPill');
+const connectBtn    = document.getElementById('connectBtn');
+const wsUrlInput    = document.getElementById('wsUrl');
+const micBtn        = document.getElementById('micBtn');
+const micStatus     = document.getElementById('micStatus');
+const transcriptBox = document.getElementById('transcriptBox');
+const emptyMsg      = document.getElementById('emptyMsg');
+const waveCanvas    = document.getElementById('wave');
+const wCtx          = waveCanvas.getContext('2d');
+const bars          = document.getElementById('bars');
+const outputLabel   = document.getElementById('outputLabel');
 
-// ── Logging ────────────────────────────────────────────────────────────────
-function log(msg, type = 'info') {
-  const now = new Date().toTimeString().slice(0,8);
-  const row = document.createElement('div');
-  row.className = 'log-entry';
-  row.innerHTML = `<span class="log-ts">${now}</span><span class="log-msg ${type}">${msg}</span>`;
-  logBox.appendChild(row);
-  logBox.scrollTop = logBox.scrollHeight;
+// ── Resize canvas ──────────────────────────────────────────────────
+function resizeCanvas() {
+  waveCanvas.width  = waveCanvas.offsetWidth  * devicePixelRatio;
+  waveCanvas.height = waveCanvas.offsetHeight * devicePixelRatio;
 }
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
 
-// ── Transcript ─────────────────────────────────────────────────────────────
-function addTurn(role, text) {
-  // Remove placeholder
-  const placeholder = transcriptBox.querySelector('div[style*="italic"]');
-  if (placeholder) placeholder.remove();
-
-  const turn = document.createElement('div');
-  turn.className = `turn ${role}`;
-  turn.innerHTML = `<span class="turn-label">${role === 'user' ? 'YOU' : 'AI '}</span><span class="turn-text"></span>`;
-  turn.querySelector('.turn-text').textContent = text;
-  transcriptBox.appendChild(turn);
-  transcriptBox.scrollTop = transcriptBox.scrollHeight;
-
-  document.getElementById('transcriptDot').classList.add('live');
-  setTimeout(() => document.getElementById('transcriptDot').classList.remove('live'), 1200);
-}
-
-function clearTranscript() {
-  transcriptBox.innerHTML = '<div style="color:var(--muted); font-style:italic; font-size:.78rem;">Conversation will appear here…</div>';
-}
-
-// ── WebSocket ──────────────────────────────────────────────────────────────
+// ── WebSocket ──────────────────────────────────────────────────────
 function toggleConnection() {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.close();
-  } else {
-    connectWS(wsUrlInput.value.trim());
-  }
+  if (ws && ws.readyState === WebSocket.OPEN) { ws.close(); return; }
+  connectWS(wsUrlInput.value.trim());
 }
 
 function connectWS(url) {
   setStatus('connecting');
-  log(`Connecting to ${url}…`);
-
-  try { ws = new WebSocket(url); }
-  catch(e) { log('Invalid WebSocket URL: ' + e.message, 'err'); setStatus('error'); return; }
-
+  try { ws = new WebSocket(url); } catch(e) { setStatus('error'); return; }
   ws.binaryType = 'arraybuffer';
 
-  ws.onopen = () => {
-    setStatus('connected');
-    log('WebSocket connected', 'ok');
-    enableMic();
-  };
+  ws.onopen = () => { setStatus('connected'); enableMic(); };
 
   ws.onmessage = (ev) => {
     if (ev.data instanceof ArrayBuffer) {
-      // Binary = TTS audio (PCM float32 or wav bytes)
       handleAudioData(ev.data);
     } else {
-      // JSON message
       try {
         const msg = JSON.parse(ev.data);
         handleMessage(msg);
       } catch {
-        // Plain text transcript
-        log(`← ${ev.data}`, 'info');
-        addTurn('assistant', ev.data);
+        addTurn('agent', ev.data);
       }
     }
   };
 
-  ws.onclose = (ev) => {
-    setStatus('disconnected');
-    log(`Disconnected (code ${ev.code})`, 'err');
-    disableMic();
-  };
-
-  ws.onerror = () => {
-    log('WebSocket error — check URL and server', 'err');
-    setStatus('error');
-  };
+  ws.onclose  = () => { setStatus('disconnected'); disableMic(); };
+  ws.onerror  = ()  => { setStatus('error'); };
 }
 
 function handleMessage(msg) {
-  // Handle structured messages from orchestrator
-  // Typical patterns:
   if (msg.type === 'transcript' || msg.text) {
-    const role = msg.role || (msg.source === 'stt' ? 'user' : 'assistant');
+    const role = msg.role === 'user' || msg.source === 'stt' ? 'user' : 'agent';
     addTurn(role, msg.text || msg.transcript);
-    log(`[${role.toUpperCase()}] ${(msg.text||msg.transcript).slice(0,80)}`, 'info');
   }
   if (msg.type === 'audio' && msg.data) {
-    // base64-encoded audio
     const bytes = Uint8Array.from(atob(msg.data), c => c.charCodeAt(0));
     handleAudioData(bytes.buffer);
   }
-  if (msg.type === 'status') {
-    log(`[status] ${msg.message || JSON.stringify(msg)}`, 'info');
-  }
-  if (msg.type === 'error') {
-    log(`[error] ${msg.message || JSON.stringify(msg)}`, 'err');
-  }
 }
 
-// ── Mic / Recording ────────────────────────────────────────────────────────
+// ── Transcript ─────────────────────────────────────────────────────
+function addTurn(role, text) {
+  if (emptyMsg) emptyMsg.remove();
+  const t = document.createElement('div');
+  t.className = `turn ${role}`;
+  t.innerHTML = `<span class="turn-label">${role === 'user' ? 'YOU' : 'AGENT'}</span><span class="turn-text">${escHtml(text)}</span>`;
+  transcriptBox.appendChild(t);
+  transcriptBox.scrollTop = transcriptBox.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Mic ────────────────────────────────────────────────────────────
 function enableMic() {
-  micBtn.classList.remove('disabled');
-  micHint.textContent = 'Click to start recording';
+  micBtn.classList.remove('off');
+  setMicStatus('idle');
 }
 
 function disableMic() {
   if (recording) stopRecording();
-  micBtn.classList.add('disabled');
-  micHint.textContent = 'Connect first to enable mic';
+  micBtn.classList.add('off');
+  setMicStatus('connect to start');
 }
 
 async function toggleMic() {
-  if (micBtn.classList.contains('disabled')) return;
-  if (recording) { stopRecording(); return; }
-  await startRecording();
+  if (micBtn.classList.contains('off')) return;
+  recording ? stopRecording() : await startRecording();
 }
 
 async function startRecording() {
   try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: SAMPLE_RATE, channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-  } catch(e) {
-    log('Mic access denied: ' + e.message, 'err');
-    return;
-  }
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
+    });
+  } catch(e) { setMicStatus('mic denied'); return; }
 
-  audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
+  audioCtx = new AudioContext({ sampleRate: 16000 });
   const source = audioCtx.createMediaStreamSource(mediaStream);
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 256;
   source.connect(analyser);
 
-  // ScriptProcessor for raw PCM (widely supported)
-  const bufSize = Math.floor(SAMPLE_RATE * CHUNK_MS / 1000);
   processor = audioCtx.createScriptProcessor(4096, 1, 1);
-
   source.connect(processor);
   processor.connect(audioCtx.destination);
 
   processor.onaudioprocess = (e) => {
-    if (!recording) return;
-    const f32 = e.inputBuffer.getChannelData(0);
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      // Send raw float32 PCM
-      ws.send(f32.buffer.slice(0));
-    }
+    if (!recording || !ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(e.inputBuffer.getChannelData(0).buffer.slice(0));
   };
 
   recording = true;
-  micBtn.classList.add('recording');
-  micDot.classList.add('live');
-  micHint.textContent = 'Recording… click to stop';
-  log('Microphone recording started', 'ok');
-  drawWaveform();
+  micBtn.classList.add('live');
+  setMicStatus('recording', 'live');
+  drawWave();
 }
 
 function stopRecording() {
@@ -590,152 +440,110 @@ function stopRecording() {
   audioCtx?.close();
   processor = analyser = mediaStream = audioCtx = null;
 
-  if (ws && ws.readyState === WebSocket.OPEN) {
+  if (ws?.readyState === WebSocket.OPEN)
     ws.send(JSON.stringify({ type: 'flush' }));
-  }
 
-  micBtn.classList.remove('recording');
-  micDot.classList.remove('live');
-  micHint.textContent = 'Click to start recording';
-  log('Microphone stopped', 'info');
-  clearWaveform();
+  micBtn.classList.remove('live');
+  setMicStatus('idle');
+  clearWave();
 }
 
-// ── Waveform ───────────────────────────────────────────────────────────────
-function resizeCanvas() {
-  waveCanvas.width  = waveCanvas.offsetWidth  * devicePixelRatio;
-  waveCanvas.height = waveCanvas.offsetHeight * devicePixelRatio;
-  ctx2d.scale(devicePixelRatio, devicePixelRatio);
-}
-resizeCanvas();
-window.addEventListener('resize', resizeCanvas);
-
-function clearWaveform() {
-  ctx2d.clearRect(0,0,waveCanvas.offsetWidth, waveCanvas.offsetHeight);
+// ── Waveform ───────────────────────────────────────────────────────
+function clearWave() {
+  wCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
 }
 
-function drawWaveform() {
+function drawWave() {
   if (!analyser) return;
-  requestAnimationFrame(drawWaveform);
+  requestAnimationFrame(drawWave);
   const buf = new Uint8Array(analyser.frequencyBinCount);
   analyser.getByteTimeDomainData(buf);
-
-  const W = waveCanvas.offsetWidth;
-  const H = waveCanvas.offsetHeight;
-  ctx2d.clearRect(0,0,W,H);
-  ctx2d.strokeStyle = '#ff4d6a';
-  ctx2d.lineWidth   = 1.5;
-  ctx2d.beginPath();
-
-  const step = W / buf.length;
+  const W = waveCanvas.width / devicePixelRatio;
+  const H = waveCanvas.height / devicePixelRatio;
+  wCtx.save();
+  wCtx.scale(devicePixelRatio, devicePixelRatio);
+  wCtx.clearRect(0, 0, W, H);
+  wCtx.strokeStyle = '#ff4d6a';
+  wCtx.lineWidth = 1.2;
+  wCtx.beginPath();
   buf.forEach((v, i) => {
-    const x = i * step;
+    const x = (i / buf.length) * W;
     const y = (v / 128) * (H / 2);
-    i === 0 ? ctx2d.moveTo(x, y) : ctx2d.lineTo(x, y);
+    i === 0 ? wCtx.moveTo(x, y) : wCtx.lineTo(x, y);
   });
-  ctx2d.stroke();
+  wCtx.stroke();
+  wCtx.restore();
 }
 
-// ── TTS Audio playback ─────────────────────────────────────────────────────
-// Accumulate binary chunks and play them as WAV/PCM
-const playbackCtx = new (window.AudioContext || window.webkitAudioContext)();
-let playbackQueue = [];
-let playbackBusy  = false;
-
+// ── Audio playback ─────────────────────────────────────────────────
 function handleAudioData(buffer) {
-  log(`Audio chunk received (${buffer.byteLength} bytes)`, 'ok');
   playbackQueue.push(buffer);
-  if (!playbackBusy) drainAudioQueue();
+  if (!playbackBusy) drainQueue();
 }
 
-async function drainAudioQueue() {
-  if (playbackQueue.length === 0) {
-    setSpeaking(false);
-    return;
-  }
+async function drainQueue() {
+  if (!playbackQueue.length) { setSpeaking(false); return; }
   playbackBusy = true;
   setSpeaking(true);
-
-  const buffer = playbackQueue.shift();
-
+  const buf = playbackQueue.shift();
   try {
-    const decoded = await playbackCtx.decodeAudioData(buffer.slice(0));
-    const source = playbackCtx.createBufferSource();
-    source.buffer = decoded;
-    source.connect(playbackCtx.destination);
-    source.onended = () => {
-      playbackBusy = false;
-      drainAudioQueue();
-    };
-    source.start();
-    playbackStatus.textContent = `Playing (${(buffer.byteLength/1024).toFixed(1)} KB)`;
-    ttsDot.classList.add('live');
-  } catch(e) {
-    // Maybe raw PCM float32?
-    playRawPCM(buffer);
+    const decoded = await playbackCtx.decodeAudioData(buf.slice(0));
+    const src = playbackCtx.createBufferSource();
+    src.buffer = decoded;
+    src.connect(playbackCtx.destination);
+    src.onended = () => { playbackBusy = false; drainQueue(); };
+    src.start();
+  } catch {
+    playRawPCM(buf);
   }
 }
 
 function playRawPCM(buffer) {
-  // Assume float32 @ 24000 Hz (moshi TTS default)
-  const f32 = new Float32Array(buffer);
+  const f32  = new Float32Array(buffer);
   const abuf = playbackCtx.createBuffer(1, f32.length, 24000);
   abuf.getChannelData(0).set(f32);
   const src = playbackCtx.createBufferSource();
   src.buffer = abuf;
   src.connect(playbackCtx.destination);
-  src.onended = () => {
-    playbackBusy = false;
-    drainAudioQueue();
-  };
+  src.onended = () => { playbackBusy = false; drainQueue(); };
   src.start();
-  setSpeaking(true);
-  playbackStatus.textContent = `Playing PCM (${(buffer.byteLength/1024).toFixed(1)} KB)`;
-  ttsDot.classList.add('live');
 }
 
-function setSpeaking(active) {
-  if (active) {
-    speakingBar.classList.add('active');
-    speakingLabel.textContent = 'SPEAKING';
+function setSpeaking(on) {
+  if (on) {
+    bars.classList.add('speaking');
+    outputLabel.textContent = 'SPEAKING';
+    outputLabel.classList.add('speaking');
   } else {
-    speakingBar.classList.remove('active');
-    speakingLabel.textContent = 'IDLE';
-    playbackStatus.textContent = 'Waiting for response…';
-    ttsDot.classList.remove('live');
+    bars.classList.remove('speaking');
+    outputLabel.textContent = 'IDLE';
+    outputLabel.classList.remove('speaking');
   }
 }
 
-// ── Status helpers ─────────────────────────────────────────────────────────
-function setStatus(state) {
-  statusPill.className = 'status-pill';
-  connectBtn.className = 'btn-connect';
+// ── Status helpers ─────────────────────────────────────────────────
+function setStatus(s) {
+  statusPill.className = 'pill';
+  connectBtn.className = 'btn-conn';
+  wsUrlInput.disabled  = s !== 'disconnected' && s !== 'error';
 
-  if (state === 'connected') {
-    statusPill.textContent = 'CONNECTED';
-    statusPill.classList.add('connected');
-    connectBtn.textContent = 'DISCONNECT';
-    connectBtn.classList.add('disconnect');
-    wsUrlInput.disabled = true;
-  } else if (state === 'connecting') {
-    statusPill.textContent = 'CONNECTING…';
-    statusPill.classList.add('connecting');
-    connectBtn.textContent = 'CANCEL';
-    wsUrlInput.disabled = true;
-  } else if (state === 'error') {
-    statusPill.textContent = 'ERROR';
-    statusPill.classList.add('error');
-    connectBtn.textContent = 'RETRY';
-    wsUrlInput.disabled = false;
-  } else {
-    statusPill.textContent = 'DISCONNECTED';
-    connectBtn.textContent = 'CONNECT';
-    wsUrlInput.disabled = false;
-  }
+  const map = {
+    connected:    ['on',  'ON',          'DISCONNECT', 'active'],
+    connecting:   ['spin','CONNECTING',  'CANCEL',     ''],
+    disconnected: ['',    'OFF',         'CONNECT',    ''],
+    error:        ['err', 'ERROR',       'RETRY',      ''],
+  };
+  const [cls, label, btn, btnCls] = map[s] || map.disconnected;
+  if (cls) statusPill.classList.add(cls);
+  statusPill.textContent = label;
+  connectBtn.textContent = btn;
+  if (btnCls) connectBtn.classList.add(btnCls);
 }
 
-log('Unmute client ready', 'ok');
-log('Enter WebSocket URL and click CONNECT', 'info');
+function setMicStatus(msg, cls = '') {
+  micStatus.className = 'mic-status' + (cls ? ' ' + cls : '');
+  micStatus.textContent = msg;
+}
 </script>
 </body>
 </html>

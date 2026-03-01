@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Voice</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #080909; }
+
+#canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 1; }
+
+.ambient { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+.blob { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.45; animation: drift 22s linear infinite; }
+.blob-1 { width: 600px; height: 600px; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+@keyframes drift {
+  0%   { transform: translate(-50%,-50%) scale(1); }
+  33%  { transform: translate(calc(-50% + 30px), calc(-50% - 24px)) scale(1.07); }
+  66%  { transform: translate(calc(-50% - 20px), calc(-50% + 20px)) scale(0.96); }
+  100% { transform: translate(-50%,-50%) scale(1); }
+}
+
+#transcript {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+  padding: 0 60px;
+  gap: 0;
+}
+
+.turn {
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1.7;
+  letter-spacing: 0.01em;
+  text-align: center;
+  max-width: 480px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+  margin: 4px 0;
+}
+.turn.visible { opacity: 1; transform: translateY(0); }
+.turn.user  { color: rgba(255,255,255,0.28); }
+.turn.agent { color: rgba(255,255,255,0.62); }
+.turn.fade  { opacity: 0.08; transition: opacity 1.2s ease; }
+
+#state-hint {
+  position: fixed;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-weight: 300;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.18);
+  transition: color 0.4s ease;
+}
+
+#ws-input {
+  position: fixed;
+  top: 28px;
+  right: 28px;
+  z-index: 10;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.15);
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  padding: 2px 4px;
+  outline: none;
+  width: 160px;
+  transition: color 0.2s, border-color 0.2s;
+}
+#ws-input:focus { color: rgba(255,255,255,0.45); border-color: rgba(255,255,255,0.25); }
+</style>
+</head>
+<body>
+
+<div class="ambient"><div class="blob blob-1" id="blobEl"></div></div>
+<canvas id="canvas"></canvas>
+
+<div id="transcript"></div>
+<div id="state-hint">listening for your voice</div>
+<input id="ws-input" type="text" value="ws://localhost:3004/ws" spellcheck="false" />
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ── Three.js orb ──────────────────────────────────────────────────
+
+const vertexShader = `
+  varying vec3 vNormal; varying vec3 vWorldPos; varying vec3 vViewDir; varying vec2 vUv;
+  uniform float time; uniform float morphAmp; uniform float audioLevel; uniform float layerIndex;
+  vec3 mod289v3(vec3 x){return x-floor(x*(1./289.))*289.;}
+  vec4 mod289v4(vec4 x){return x-floor(x*(1./289.))*289.;}
+  vec4 permute(vec4 x){return mod289v4(((x*34.)+1.)*x);}
+  vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+  float snoise(vec3 v){
+    const vec2 C=vec2(1./6.,1./3.); const vec4 D=vec4(0.,.5,1.,2.);
+    vec3 i=floor(v+dot(v,C.yyy)); vec3 x0=v-i+dot(i,C.xxx);
+    vec3 g=step(x0.yzx,x0.xyz); vec3 l=1.-g;
+    vec3 i1=min(g.xyz,l.zxy); vec3 i2=max(g.xyz,l.zxy);
+    vec3 x1=x0-i1+C.xxx; vec3 x2=x0-i2+C.yyy; vec3 x3=x0-D.yyy;
+    i=mod289v3(i);
+    vec4 p=permute(permute(permute(i.z+vec4(0.,i1.z,i2.z,1.))+i.y+vec4(0.,i1.y,i2.y,1.))+i.x+vec4(0.,i1.x,i2.x,1.));
+    float n_=.142857142857; vec3 ns=n_*D.wyz-D.xzx;
+    vec4 j=p-49.*floor(p*ns.z*ns.z); vec4 x_=floor(j*ns.z); vec4 y_=floor(j-7.*x_);
+    vec4 x=x_*ns.x+ns.yyyy; vec4 y=y_*ns.x+ns.yyyy; vec4 h=1.-abs(x)-abs(y);
+    vec4 b0=vec4(x.xy,y.xy); vec4 b1=vec4(x.zw,y.zw);
+    vec4 s0=floor(b0)*2.+1.; vec4 s1=floor(b1)*2.+1.; vec4 sh=-step(h,vec4(0.));
+    vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy; vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+    vec3 p0=vec3(a0.xy,h.x); vec3 p1=vec3(a0.zw,h.y); vec3 p2=vec3(a1.xy,h.z); vec3 p3=vec3(a1.zw,h.w);
+    vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+    p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+    vec4 m=max(.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.);
+    m=m*m; return 42.*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+  }
+  void main(){
+    vUv=uv; vec3 pos=position; float lOff=layerIndex*1.7;
+    float n1=snoise(pos*1.4+vec3(time*.40+lOff,time*.28,time*.36));
+    float n2=snoise(pos*2.6-vec3(time*.55,time*.44+lOff,time*.33));
+    float n3=snoise(pos*4.2+vec3(time*.22,time*.60+lOff,time*.48));
+    float wave=sin(pos.y*2.8+time*1.4+lOff)*cos(pos.x*2.2-time*1.1);
+    wave+=sin(pos.x*3.2-time*1.7+lOff)*cos(pos.z*2.6+time*1.3);
+    wave*=0.3;
+    float disp=n1*.55+n2*.30+n3*.15+wave;
+    disp*=morphAmp*(0.55+audioLevel*1.2);
+    pos+=normal*disp;
+    vec4 worldPos4=modelMatrix*vec4(pos,1.0);
+    vWorldPos=worldPos4.xyz;
+    vNormal=normalize(normalMatrix*normal);
+    vViewDir=normalize(cameraPosition-vWorldPos);
+    gl_Position=projectionMatrix*viewMatrix*worldPos4;
+  }
+`;
+
+const fragmentShader = `
+  varying vec3 vNormal; varying vec3 vWorldPos; varying vec3 vViewDir; varying vec2 vUv;
+  uniform vec3 tint; uniform float baseOpacity; uniform float time; uniform float audioLevel; uniform float layerIndex;
+  float fresnel(vec3 n,vec3 v,float power){ return pow(clamp(1.0-dot(n,v),0.0,1.0),power); }
+  float caustic(vec2 uv,float t){
+    vec2 p=uv*4.0; float c=0.0;
+    for(int i=0;i<3;i++){ float fi=float(i); c+=sin(p.x*(1.5+fi*.7)+t*(.6+fi*.3))*cos(p.y*(1.3+fi*.6)-t*(.5+fi*.25)); }
+    return c*.5+.5;
+  }
+  vec3 iridescent(float fresn,float t){
+    float shift=fresn*1.2+vWorldPos.y*.15+t*.12;
+    return vec3(sin(shift*6.28)*.5+.5, sin(shift*6.28+2.09)*.5+.5, sin(shift*6.28+4.19)*.5+.5);
+  }
+  void main(){
+    vec3 N=normalize(vNormal); vec3 V=normalize(vViewDir); float fresn=fresnel(N,V,2.5);
+    vec3 col=tint*(0.3+audioLevel*0.4);
+    vec3 iri=iridescent(fresn,time); col=mix(col,iri,fresn*.55+.08);
+    float caus=caustic(vUv,time*.8+layerIndex*.4); col+=tint*caus*.18*(.5+fresn);
+    vec3 lightDir=normalize(vec3(.8,1.0,.7));
+    float spec=pow(max(dot(reflect(-lightDir,N),V),0.0),48.0);
+    float spec2=pow(max(dot(reflect(-normalize(vec3(-.6,.5,.9)),N),V),0.0),80.0);
+    col+=vec3(1.0)*spec*.85; col+=vec3(1.0)*spec2*.5;
+    float edgeGlow=fresn*(.6+audioLevel*.7); col+=tint*edgeGlow*.65;
+    float rim=pow(fresn,1.2); col+=vec3(1.0)*rim*.30;
+    float aberr=fresn*.08+audioLevel*.04; col.r+=aberr; col.b-=aberr*.7;
+    float alpha=baseOpacity+fresn*.50+spec*.4+spec2*.3; alpha=clamp(alpha,0.0,0.92);
+    gl_FragColor=vec4(col,alpha);
+  }
+`;
+
+const glowVert = `
+  varying vec3 vNormal; varying vec3 vViewDir; varying vec3 vWorldPos;
+  void main(){
+    vec4 wp=modelMatrix*vec4(position,1.0); vWorldPos=wp.xyz;
+    vNormal=normalize(normalMatrix*normal); vViewDir=normalize(cameraPosition-vWorldPos);
+    gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+  }
+`;
+const glowFrag = `
+  varying vec3 vNormal; varying vec3 vViewDir;
+  uniform vec3 glowColor; uniform float glowIntensity; uniform float time;
+  void main(){
+    float f=pow(1.0-abs(dot(normalize(vNormal),normalize(vViewDir))),2.2);
+    float pulse=0.85+0.15*sin(time*2.0);
+    float alpha=f*glowIntensity*pulse*0.9;
+    gl_FragColor=vec4(glowColor*1.5,clamp(alpha,0.0,0.75));
+  }
+`;
+
+let scene, camera, renderer, orbGroup;
+let shellMesh, shellMat, halo, haloMat;
+let currentTint  = new THREE.Color(0.72,0.78,0.95);
+let targetTint   = new THREE.Color(0.72,0.78,0.95);
+let currentGlow  = new THREE.Color(0.55,0.62,1.0);
+let targetGlow   = new THREE.Color(0.55,0.62,1.0);
+let currentScale = 1.0, targetScale = 1.0;
+let rotY = 0, clockT = 0;
+
+const stateProps = {
+  idle:      { tint:[0.72,0.78,0.95], glow:[0.55,0.62,1.0],  morphAmp:0.06, timeSpeed:0.008, rotSpeed:0.003, blobColor:'167,139,250', pulseMin:0.0, pulseMax:0.06 },
+  listening: { tint:[0.55,0.95,0.82], glow:[0.3,0.9,0.7],    morphAmp:0.14, timeSpeed:0.016, rotSpeed:0.005, blobColor:'80,230,180',  pulseMin:0.0, pulseMax:0.32 },
+  thinking:  { tint:[0.75,0.58,1.0],  glow:[0.62,0.38,1.0],  morphAmp:0.09, timeSpeed:0.012, rotSpeed:0.004, blobColor:'180,140,255', pulseMin:0.0, pulseMax:0.10 },
+  speaking:  { tint:[1.0,0.50,0.72],  glow:[1.0,0.28,0.55],  morphAmp:0.16, timeSpeed:0.020, rotSpeed:0.006, blobColor:'255,100,160', pulseMin:0.04, pulseMax:0.28 },
+};
+
+function initThree() {
+  scene  = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
+  camera.position.z = 4.2;
+  renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), antialias:true, alpha:true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setClearColor(0x000000, 0);
+  orbGroup = new THREE.Group();
+  scene.add(orbGroup);
+
+  const geo = new THREE.SphereGeometry(1.0, 128, 128);
+  shellMat  = new THREE.ShaderMaterial({
+    vertexShader, fragmentShader,
+    uniforms: {
+      tint:        { value: currentTint.clone() },
+      baseOpacity: { value: 0.07 },
+      time:        { value: 0 },
+      morphAmp:    { value: 0.06 },
+      audioLevel:  { value: 0 },
+      layerIndex:  { value: 0 },
+    },
+    transparent:true, depthWrite:false, side:THREE.DoubleSide,
+  });
+  shellMesh = new THREE.Mesh(geo, shellMat);
+  orbGroup.add(shellMesh);
+
+  const haloGeo = new THREE.SphereGeometry(1.08, 64, 64);
+  haloMat = new THREE.ShaderMaterial({
+    vertexShader: glowVert, fragmentShader: glowFrag,
+    uniforms: {
+      glowColor:     { value: currentGlow.clone() },
+      glowIntensity: { value: 0.35 },
+      time:          { value: 0 },
+    },
+    transparent:true, depthWrite:false, side:THREE.BackSide, blending:THREE.AdditiveBlending,
+  });
+  halo = new THREE.Mesh(haloGeo, haloMat);
+  orbGroup.add(halo);
+
+  window.addEventListener('resize', () => {
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+  animate();
+}
+
+let _audioLevelSmooth = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const s = stateProps[currentState];
+
+  clockT  += s.timeSpeed;
+  rotY    += s.rotSpeed;
+
+  currentTint.lerp(targetTint, 0.05);
+  currentGlow.lerp(targetGlow, 0.05);
+
+  // Audio level from real mic or demo
+  let rawLevel = 0;
+  if (analyserNode && micDataArray) {
+    analyserNode.getByteFrequencyData(micDataArray);
+    let sum = 0;
+    for (let i = 0; i < micDataArray.length; i++) sum += micDataArray[i];
+    rawLevel = sum / micDataArray.length / 255;
+  } else {
+    const now = performance.now() * 0.001;
+    if (currentState === 'idle')      rawLevel = (Math.sin(now * 0.9) + 1) * 0.5 * 0.3;
+    else if (currentState === 'thinking') rawLevel = (Math.sin(now * 1.6) + 1) * 0.5 * 0.6;
+    else if (currentState === 'speaking') rawLevel = 0.5 + Math.sin(now * 3.2) * 0.22 + Math.sin(now * 11) * 0.08;
+    else rawLevel = (Math.sin(now * 4) + 1) * 0.5 * 0.7;
+  }
+  _audioLevelSmooth += (rawLevel - _audioLevelSmooth) * 0.18;
+
+  const now2 = performance.now() * 0.001;
+  let pulseFactor = _audioLevelSmooth;
+  if (currentState === 'idle')     pulseFactor = (Math.sin(now2 * 0.9) + 1) * 0.5;
+  if (currentState === 'thinking') pulseFactor = (Math.sin(now2 * 1.6) + 1) * 0.5;
+
+  targetScale = 1.0 + s.pulseMin + pulseFactor * (s.pulseMax - s.pulseMin);
+  currentScale += (targetScale - currentScale) * 0.12;
+
+  orbGroup.rotation.y = rotY;
+  orbGroup.rotation.x = Math.sin(now2 * 0.25) * 0.1;
+
+  shellMat.uniforms.time.value       = clockT;
+  shellMat.uniforms.audioLevel.value = _audioLevelSmooth;
+  shellMat.uniforms.tint.value.copy(currentTint);
+  shellMat.uniforms.morphAmp.value   = s.morphAmp;
+  shellMesh.scale.setScalar(currentScale);
+
+  haloMat.uniforms.glowColor.value.copy(currentGlow);
+  haloMat.uniforms.glowIntensity.value = 0.22 + _audioLevelSmooth * 0.35;
+  haloMat.uniforms.time.value = clockT;
+  halo.scale.setScalar(currentScale * 0.7 + 0.3);
+
+  const sp = s;
+  document.getElementById('blobEl').style.background =
+    `radial-gradient(circle, rgba(${sp.blobColor},0.85), transparent 70%)`;
+
+  renderer.render(scene, camera);
+}
+
+// ── State machine ─────────────────────────────────────────────────
+
+let currentState = 'idle';
+const hints = {
+  idle:      'listening for your voice',
+  listening: 'speak freely',
+  thinking:  '',
+  speaking:  '',
+};
+
+function setState(name) {
+  if (currentState === name) return;
+  currentState = name;
+  const p = stateProps[name];
+  targetTint.set(...p.tint);
+  targetGlow.set(...p.glow);
+  const hint = document.getElementById('state-hint');
+  hint.textContent = hints[name] || '';
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────
+
+let ws = null;
+
+function connectWS() {
+  const url = document.getElementById('ws-input').value.trim();
+  try { ws = new WebSocket(url); } catch(e) { return; }
+  ws.binaryType = 'arraybuffer';
+  ws.onopen  = () => {};
+  ws.onclose = () => { ws = null; setTimeout(connectWS, 3000); };
+  ws.onerror = () => {};
+  ws.onmessage = (ev) => {
+    if (ev.data instanceof ArrayBuffer) {
+      handlePlayback(ev.data);
+    } else {
+      try {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === 'transcript' || msg.text) {
+          const role = (msg.role === 'user' || msg.source === 'stt') ? 'user' : 'agent';
+          addTurn(role, msg.text || msg.transcript);
+          if (role === 'agent' && currentState === 'thinking') setState('speaking');
+        }
+        if (msg.type === 'audio' && msg.data) {
+          const bytes = Uint8Array.from(atob(msg.data), c => c.charCodeAt(0));
+          handlePlayback(bytes.buffer);
+        }
+      } catch {}
+    }
+  };
+}
+
+// ── Microphone & VAD ──────────────────────────────────────────────
+
+let micStream = null, micCtx = null, analyserNode = null, micDataArray = null;
+let micProcessor = null;
+let vadActive = false, silenceTimer = null;
+const VAD_THRESHOLD = 0.012;   // RMS threshold to consider "speech"
+const SILENCE_DELAY  = 900;    // ms of silence before sending flush
+
+async function initMic() {
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
+    });
+  } catch(e) {
+    document.getElementById('state-hint').textContent = 'mic access needed';
+    return;
+  }
+
+  micCtx      = new AudioContext({ sampleRate: 16000 });
+  const source = micCtx.createMediaStreamSource(micStream);
+  analyserNode = micCtx.createAnalyser();
+  analyserNode.fftSize = 256;
+  micDataArray = new Uint8Array(analyserNode.frequencyBinCount);
+  source.connect(analyserNode);
+
+  micProcessor = micCtx.createScriptProcessor(4096, 1, 1);
+  source.connect(micProcessor);
+  micProcessor.connect(micCtx.destination);
+
+  micProcessor.onaudioprocess = (e) => {
+    const pcm = e.inputBuffer.getChannelData(0);
+    const rms = Math.sqrt(pcm.reduce((s, v) => s + v*v, 0) / pcm.length);
+
+    if (rms > VAD_THRESHOLD) {
+      // Voice detected
+      if (!vadActive) {
+        vadActive = true;
+        if (currentState === 'idle') setState('listening');
+      }
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+      // Send audio over WS
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(pcm.buffer.slice(0));
+      }
+    } else {
+      // Silence
+      if (vadActive && !silenceTimer) {
+        silenceTimer = setTimeout(() => {
+          vadActive = false;
+          silenceTimer = null;
+          if (currentState === 'listening') {
+            setState('thinking');
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'flush' }));
+            } else {
+              // No WS: demo mode — pretend to think then speak
+              setTimeout(() => {
+                setState('speaking');
+                addTurn('agent', 'I heard you. This is demo mode — connect a WebSocket server to get real responses.');
+                setTimeout(() => setState('idle'), 4000);
+              }, 1200);
+            }
+          }
+        }, SILENCE_DELAY);
+      }
+    }
+  };
+}
+
+// ── Playback ──────────────────────────────────────────────────────
+
+const playCtx = new (window.AudioContext || window.webkitAudioContext)();
+let playQueue = [], playBusy = false;
+
+function handlePlayback(buffer) {
+  if (currentState !== 'speaking') setState('speaking');
+  playQueue.push(buffer);
+  if (!playBusy) drainPlay();
+}
+
+async function drainPlay() {
+  if (!playQueue.length) { setState('idle'); return; }
+  playBusy = true;
+  const buf = playQueue.shift();
+  try {
+    const decoded = await playCtx.decodeAudioData(buf.slice(0));
+    const src = playCtx.createBufferSource();
+    src.buffer = decoded;
+    src.connect(playCtx.destination);
+    src.onended = () => { playBusy = false; drainPlay(); };
+    src.start();
+  } catch {
+    // Raw PCM fallback
+    const f32  = new Float32Array(buf);
+    const abuf = playCtx.createBuffer(1, f32.length, 24000);
+    abuf.getChannelData(0).set(f32);
+    const src = playCtx.createBufferSource();
+    src.buffer = abuf;
+    src.connect(playCtx.destination);
+    src.onended = () => { playBusy = false; drainPlay(); };
+    src.start();
+  }
+}
+
+// ── Transcript ────────────────────────────────────────────────────
+
+let turns = [];
+
+function addTurn(role, text) {
+  const box = document.getElementById('transcript');
+  // Fade older turns
+  turns.forEach(el => el.classList.add('fade'));
+  const el = document.createElement('div');
+  el.className = `turn ${role}`;
+  el.textContent = text;
+  box.appendChild(el);
+  turns.push(el);
+  // Limit visible turns
+  if (turns.length > 6) {
+    const old = turns.shift();
+    old.remove();
+  }
+  requestAnimationFrame(() => el.classList.add('visible'));
+}
+
+// ── WS URL change ─────────────────────────────────────────────────
+document.getElementById('ws-input').addEventListener('change', () => {
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  connectWS();
+});
+
+// ── Boot ──────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  initThree();
+  connectWS();
+  initMic();
+});
+</script>
+</body>
+</html>

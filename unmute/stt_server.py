@@ -160,6 +160,8 @@ async def websocket_endpoint(ws: WebSocket):
         try:
             while True:
                 data = await ws.receive()
+                if data.get("type") == "websocket.disconnect":
+                    raise WebSocketDisconnect(code=data.get("code", 1000))
 
                 if "bytes" in data and data["bytes"]:
                     new_text = await asyncio.to_thread(

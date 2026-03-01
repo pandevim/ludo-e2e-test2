@@ -107,6 +107,9 @@ class Session:
                 """Receive audio from client and forward to STT."""
                 while True:
                     data = await self.ws.receive()
+                    if data.get("type") == "websocket.disconnect":
+                        raise WebSocketDisconnect(code=data.get("code", 1000))
+
                     if "bytes" in data and data["bytes"]:
                         await stt_ws.send(data["bytes"])
                     elif "text" in data:
