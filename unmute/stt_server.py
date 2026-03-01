@@ -1,172 +1,231 @@
 """
-stt_server.py – Streaming Speech-to-Text server
-Model: kyutai/stt-2.6b-en  (moshi library)
+stt_server.py - Streaming Speech-to-Text server
+Local Model: kyutai/stt-1b-en_fr (moshi library)
 
 WebSocket protocol:
   Client → Server: binary frames of float32 PCM at 24 kHz (mono)
-                   Send any size; server accumulates into 80 ms windows.
-  Server → Client: JSON  {"type":"transcript","text":"...","final":bool}
+  Server → Client: JSON {"type":"transcript","text":"...","final":bool}
                          {"type":"ready"}
                          {"type":"error","message":"..."}
 
 HTTP:
-  GET /health  → 200 {"status":"ok"}
+  GET /health → 200 {"status":"ok"}
 """
 
 import argparse
 import asyncio
 import json
 import logging
+from collections import deque
+
 import numpy as np
 import torch
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
+from moshi.models import LMGen  # single top-level import, catches missing dep early
 import uvicorn
 
 log = logging.getLogger("stt")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-# ── Model constants (kyutai/stt-2.6b-en) ──────────────────────────────────────
-SAMPLE_RATE   = 24_000          # Hz
-FRAME_RATE    = 12.5            # frames/sec (Mimi codec)
-FRAME_SAMPLES = int(SAMPLE_RATE / FRAME_RATE)   # 1920 samples = 80 ms
-TEXT_DELAY    = 2.5             # seconds (model's built-in lookahead)
-
 app = FastAPI(title="Kyutai STT Service")
 
 # ── Globals populated at startup ──────────────────────────────────────────────
-stt_model  = None
-device     = None
+checkpoint_info = None
+text_tokenizer  = None
+lm              = None
+device          = None
+FRAME_SIZE      = None   # samples per mimi frame (1920 @ 24kHz / 12.5fps)
+
+# Semaphore to cap concurrent GPU kernel launches and prevent OOM under load.
+# Tune MAX_CONCURRENT_SESSIONS to your container's available VRAM.
+MAX_CONCURRENT_SESSIONS = 4
+_gpu_semaphore: asyncio.Semaphore | None = None   # initialised in lifespan
 
 
 # ── Model loader ──────────────────────────────────────────────────────────────
 def load_model():
-    global stt_model, device
+    global checkpoint_info, text_tokenizer, lm, device, FRAME_SIZE
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    log.info(f"Loading kyutai/stt-2.6b-en on {device}...")
+    dtype  = torch.float32 if device.type == "cpu" else torch.bfloat16
+
+    log.info(f"Loading kyutai/stt-1b-en_fr on {device} ({dtype})...")
 
     from moshi.models.loaders import CheckpointInfo
-    info = CheckpointInfo.from_hf_repo("kyutai/stt-2.6b-en")
 
-    # The CheckpointInfo exposes the STT model; exact attribute depends on
-    # moshi version – fall back gracefully.
-    if hasattr(info, "get_stt_model"):
-        stt_model = info.get_stt_model().to(device).eval()
-    elif hasattr(info, "get_model"):
-        stt_model = info.get_model().to(device).eval()
-    else:
-        raise RuntimeError("Cannot find model loader on CheckpointInfo. "
-                           "Check your moshi version.")
+    checkpoint_info = CheckpointInfo.from_hf_repo("kyutai/stt-1b-en_fr")
+    # NOTE: mimi is NOT stored as a global — each session gets its own instance
+    # via checkpoint_info.get_mimi() to avoid shared streaming state corruption.
+    text_tokenizer  = checkpoint_info.get_text_tokenizer()
+    lm              = checkpoint_info.get_moshi(device=device, dtype=dtype)
 
-    log.info("STT model ready.")
+    # Use a throw-away mimi just to read the frame size, then discard it.
+    _tmp_mimi = checkpoint_info.get_mimi(device=device)
+    FRAME_SIZE = int(_tmp_mimi.sample_rate / _tmp_mimi.frame_rate)   # 1920
+    del _tmp_mimi
+
+    log.info(f"STT model ready. frame_size={FRAME_SIZE}, dep_q={lm.dep_q}")
 
 
-# ── Per-connection inference helper ───────────────────────────────────────────
-class STTSession:
-    """Wraps one WebSocket connection; accumulates audio and decodes text."""
+# ── Per-connection inference session ──────────────────────────────────────────
+class CausalSTTSession:
+    """
+    SOTA Continuous Inference State Machine.
+
+    Each session owns its own `mimi` encoder instance so that
+    streaming state (hidden states, ring buffers) is completely
+    isolated between concurrent WebSocket connections.
+    """
 
     def __init__(self):
-        self._buf = np.zeros(0, dtype=np.float32)
-        self._state = None   # carry-over hidden state (if model supports it)
+        # Per-session acoustic encoder — never share the global mimi.
+        self.mimi = checkpoint_info.get_mimi(device=device)
 
-    def push_audio(self, raw_bytes: bytes) -> list[str]:
+        # Ring buffer for incoming raw PCM floats
+        self.pcm_buffer = np.array([], dtype=np.float32)
+
+        self.lm_gen = LMGen(lm, **checkpoint_info.lm_gen_config)
+
+        # Initialise streaming context for batch size 1
+        self.mimi.streaming_forever(1)
+        self.lm_gen.streaming_forever(1)
+
+        self.first_step = True
+
+    def reset(self):
+        """Reset streaming state for the next utterance."""
+        self.pcm_buffer = np.array([], dtype=np.float32)
+        self.first_step = True
+        # Re-create fresh mimi and lm_gen instances with clean streaming state
+        self.mimi = checkpoint_info.get_mimi(device=device)
+        self.lm_gen = LMGen(lm, **checkpoint_info.lm_gen_config)
+        self.mimi.streaming_forever(1)
+        self.lm_gen.streaming_forever(1)
+
+    def _is_special_token(self, tok: int) -> bool:
+        return tok in (0, 3, text_tokenizer.eos_id(), text_tokenizer.bos_id())
+
+    def process_stream(self, raw_bytes: bytes) -> str:
         """
-        Accept raw bytes (float32 LE PCM), return list of decoded text segments.
+        Pulls exact frames from the buffer, runs the forward pass,
+        and updates hidden states. Returns any newly emitted text.
         """
-        chunk = np.frombuffer(raw_bytes, dtype=np.float32)
-        self._buf = np.concatenate([self._buf, chunk])
+        new_audio = np.frombuffer(raw_bytes, dtype=np.float32)
+        self.pcm_buffer = np.concatenate((self.pcm_buffer, new_audio))
 
-        texts = []
-        while len(self._buf) >= FRAME_SAMPLES:
-            frame = self._buf[:FRAME_SAMPLES]
-            self._buf = self._buf[FRAME_SAMPLES:]
-            text = self._infer_frame(frame)
-            if text:
-                texts.append(text)
-        return texts
+        emitted_text = ""
 
-    def _infer_frame(self, frame: np.ndarray) -> str:
-        """Run one 80 ms frame through the STT model."""
-        audio_t = torch.from_numpy(frame).unsqueeze(0).unsqueeze(0).to(device)
-        # audio_t shape: [1, 1, 1920]
+        # Drain the buffer one complete acoustic frame at a time
+        while len(self.pcm_buffer) >= FRAME_SIZE:
+            frame = self.pcm_buffer[:FRAME_SIZE]
+            self.pcm_buffer = self.pcm_buffer[FRAME_SIZE:]
 
-        with torch.inference_mode():
-            # moshi STT forward() returns text token ids or a decoded string
-            # depending on version.  Handle both cases.
-            out = stt_model(audio_t)
+            # FIX: correct reshape to [batch=1, channels=1, samples=FRAME_SIZE]
+            # Previously `in_pcm[None, 0:1]` sliced only the first *sample*,
+            # yielding shape [1, 1] instead of [1, 1, FRAME_SIZE].
+            in_pcm = (
+                torch.from_numpy(frame)
+                .to(device=device)
+                [None, None, :]          # → [1, 1, FRAME_SIZE]
+            )
 
-        if isinstance(out, str):
-            return out.strip()
-        if isinstance(out, torch.Tensor):
-            # Decode token ids using the model's own tokenizer/text decoder
-            if hasattr(stt_model, "decode_text"):
-                return stt_model.decode_text(out).strip()
-            if hasattr(stt_model, "tokenizer"):
-                ids = out.cpu().tolist()
-                ids = [i for i in ids if i > 0]
-                return stt_model.tokenizer.decode(ids).strip()
-        return ""
+            with torch.no_grad():
+                codes = self.mimi.encode(in_pcm)
+
+                # The transformer requires one prime step before producing tokens.
+                if self.first_step:
+                    self.lm_gen.step(codes)
+                    self.first_step = False
+                    continue   # prime step produces no useful output; skip decode
+
+                tokens = self.lm_gen.step(codes)
+                if tokens is not None:
+                    # tokens shape: [1, dep_q+1, 1]
+                    text_tok = tokens[0, 0, 0].item()
+
+                    if not self._is_special_token(text_tok):
+                        piece = text_tokenizer.id_to_piece(text_tok).replace("▁", " ")
+                        emitted_text += piece
+
+        return emitted_text
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.get("/health")
 async def health():
-    return JSONResponse({"status": "ok", "model": "kyutai/stt-2.6b-en"})
+    # FIX: model name now matches the checkpoint actually loaded.
+    return JSONResponse({"status": "ok", "model": "kyutai/stt-1b-en_fr"})
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
-    session = STTSession()
-    log.info("STT client connected")
-    await ws.send_text(json.dumps({"type": "ready"}))
 
-    try:
-        while True:
-            data = await ws.receive()
+    # FIX: gate concurrent GPU sessions to avoid OOM under load.
+    async with _gpu_semaphore:
+        session = CausalSTTSession()
+        log.info("Continuous STT client connected")
+        await ws.send_text(json.dumps({"type": "ready"}))
 
-            if "bytes" in data and data["bytes"]:
-                texts = await asyncio.get_event_loop().run_in_executor(
-                    None, session.push_audio, data["bytes"]
-                )
-                for t in texts:
-                    if t:
+        try:
+            while True:
+                data = await ws.receive()
+
+                if "bytes" in data and data["bytes"]:
+                    # Offload the blocking CUDA work to a thread pool so the
+                    # ASGI event loop remains responsive to other connections.
+                    new_text = await asyncio.to_thread(
+                        session.process_stream, data["bytes"]
+                    )
+
+                    if new_text:
                         await ws.send_text(json.dumps({
-                            "type":  "transcript",
-                            "text":  t,
+                            "type":  "transcript_chunk",
+                            "text":  new_text,
                             "final": False,
                         }))
 
-            elif "text" in data:
-                msg = json.loads(data["text"])
-                if msg.get("type") == "flush":
-                    # Client signals end of utterance; return any buffered text
-                    texts = await asyncio.get_event_loop().run_in_executor(
-                        None, session.push_audio, b""
-                    )
-                    combined = " ".join(t for t in texts if t).strip()
-                    await ws.send_text(json.dumps({
-                        "type":  "transcript",
-                        "text":  combined,
-                        "final": True,
-                    }))
+                elif "text" in data and data["text"]:
+                    msg = json.loads(data["text"])
 
-    except WebSocketDisconnect:
-        log.info("STT client disconnected")
-    except Exception as e:
-        log.error(f"STT error: {e}", exc_info=True)
-        try:
-            await ws.send_text(json.dumps({"type": "error", "message": str(e)}))
-        except Exception:
-            pass
+                    if msg.get("type") == "flush":
+                        log.info("Flush received — emitting final transcript and resetting.")
+
+                        # Drain any remaining buffered audio before reset
+                        leftover = session.process_stream(b"")
+                        final_text = leftover.strip()
+
+                        await ws.send_text(json.dumps({
+                            "type":  "flush_ack",
+                            "text":  final_text,   # may be empty string, orchestrator should handle
+                            "final": True,
+                        }))
+
+                        session.reset() 
+
+        except WebSocketDisconnect:
+            log.info("STT client disconnected")
+        except Exception as e:
+            log.error(f"STT error: {e}", exc_info=True)
+            try:
+                await ws.send_text(json.dumps({"type": "error", "message": str(e)}))
+            except Exception:
+                pass
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=8001)
+    parser.add_argument("--port", type=int, default=3001)
     parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument(
+        "--max-sessions", type=int, default=MAX_CONCURRENT_SESSIONS,
+        help="Max concurrent GPU inference sessions (tune to available VRAM)",
+    )
     args = parser.parse_args()
+
+    _gpu_semaphore = asyncio.Semaphore(args.max_sessions)
 
     load_model()
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

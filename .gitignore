@@ -75,3 +75,9 @@ ludo_*.err
 .idea/
 *.swp
 *.swo
+
+*.log
+*.wav
+*.mp3
+*.pcm
+*.sif

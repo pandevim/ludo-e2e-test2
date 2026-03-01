@@ -1,0 +1,9 @@
+Bootstrap: docker
+From: pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+
+%post
+    apt-get update
+    apt-get install -y git
+    # Optional: clean up to reduce image size
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*

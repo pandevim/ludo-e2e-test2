@@ -10,10 +10,10 @@
 
 # =============================================================================
 # Unmute Voice Pipeline
-#   STT  : kyutai/stt-2.6b-en      (moshi, WebSocket, port 8001)
-#   LLM  : google/gemma-3-12b-it   (vLLM, OpenAI API, port 8002)
-#   TTS  : kyutai/tts-0.75b-en-public (moshi, HTTP, port 8003)
-#   ORCH : orchestrator.py          (WebSocket bridge, port 8080)
+#   STT  : kyutai/stt-2.6b-en      (moshi, WebSocket, port 3001)
+#   LLM  : google/gemma-3-12b-it   (vLLM, OpenAI API, port 3002)
+#   TTS  : kyutai/tts-0.75b-en-public (moshi, HTTP, port 3003)
+#   ORCH : orchestrator.py          (WebSocket bridge, port 3004)
 # =============================================================================
 
 module load apptainer

@@ -51,6 +51,11 @@ needs, leaving ample headroom for the other two models.
 open http://localhost:3004
 ```
 
+```bash
+chmod +x LOCAL_USE_ONLY_unmute.sh
+./LOCAL_USE_ONLY_unmute.sh
+```
+
 ---
 
 ## Files
@@ -89,3 +94,54 @@ open http://localhost:3004
 - **Multi-GPU**: change `--gres=gpu:N` and add `--tensor-parallel-size N` to
   the vLLM command for larger models.
 - **HTTPS/WSS**: for production, put nginx in front of port 8080.
+
+```bash
+python3 - <<'EOF'
+import asyncio, websockets, json, subprocess
+
+WS_URL = "ws://localhost:3001/ws"
+MP3_FILE = "your_file.mp3"
+
+async def test_stt():
+    async with websockets.connect(WS_URL) as ws:
+        # Wait for {"type": "ready"}
+        ready = await ws.recv()
+        print("Server:", ready)
+
+        # Decode MP3 → raw float32 PCM at 24kHz mono
+        proc = subprocess.run([
+            "ffmpeg", "-i", MP3_FILE,
+            "-ar", "24000", "-ac", "1",
+            "-f", "f32le",   # float32 little-endian (NOT s16le)
+            "-"
+        ], capture_output=True)
+        pcm = proc.stdout
+        print(f"Audio decoded: {len(pcm)} bytes ({len(pcm)/4/24000:.1f}s)")
+
+        # Send in chunks
+        chunk_size = 4096
+        for i in range(0, len(pcm), chunk_size):
+            await ws.send(pcm[i:i+chunk_size])
+            await asyncio.sleep(0.02)
+
+        # Send flush signal to finalize
+        await ws.send(json.dumps({"type": "flush"}))
+
+        # Collect responses
+        try:
+            while True:
+                msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
+                print("Response:", msg)
+        except asyncio.TimeoutError:
+            print("Done.")
+
+asyncio.run(test_stt())
+EOF
+```
+
+```bash
+curl -s -X POST http://localhost:3003/synthesize \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello, this is a test of the text to speech system."}' \
+| ffmpeg -f f32le -ar 24000 -ac 1 -i pipe:0 test_output.wav
+```

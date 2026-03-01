@@ -38,3 +38,21 @@ mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
     --tensor-parallel-size 1 \
     --port 8000 \
     --allowed-origins '[\"*\"]'
+
+# # ── 3. LLM ────────────────────────────────────────────────────────────────────
+# echo ""
+# echo "[3/4] Starting LLM service (vLLM)..."
+# start_service LLM \
+#   apptainer run --nv \
+#     --bind "${HF_HOME}:/root/.cache/huggingface" \
+#     "$VLLM_IMAGE" \
+#     --model google/gemma-2b-AWQ \
+#     --port "${LLM_PORT}" \
+#     --dtype float16 \
+#     --quantization awq \
+#     --gpu-memory-utilization 0.85 \
+#     --max-model-len 2048 \
+#     --max-num-seqs 1 \
+#     --enforce-eager \
+#     --chat-template "{{ bos_token }}{% for message in messages %}{% if (message['role'] == 'user') %}{{'<start_of_turn>user\n' + message['content'] + '<end_of_turn>\n<start_of_turn>model\n'}}{% elif (message['role'] == 'assistant') %}{{message['content'] + '<end_of_turn>\n'}}{% endif %}{% endfor %}"
+# LLM_PID=$SERVICE_PID
